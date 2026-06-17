@@ -1,0 +1,222 @@
+---
+toc_max_heading_level: 4
+---
+
+import FoundryPortalAccess from './img/foundry_portal_from_res.png';
+import CreateAgent from './img/create_foundry_agent.png';
+import DeployCompletionModel from './img/deploy_base_model.png';
+import DeployGPT41Nano from './img/deploy_gpt_4_1-nano.png';
+import GPTModelDeployed from './img/model_deployed.png';
+import AISearchToolConnection from './img/ai_search_tool.png';
+import CreateAzureAISearchConnection from './img/create_ai_search_connection.png';
+import SelectAISearchResource from './img/select_ai_search_res.png';
+import AddAzureAISearchIndex from './img/add_ai_search_idx.png';
+import TestAgentFoundry from './img/test_agent.png';
+import SelectAISearchConnection from './img/select_ai_search_conn.png';
+import CreateNewResourceAISearchTool from './img/create_new_res_ai_search_tool.png';
+import SelectAISearchIndex from './img/add_ai_search_idx_tool.png';
+import VectorSearchQueryConfig from './img/vector_search_tool.png';
+import Architecture from './img/architecture_module3.png';
+
+# Module 3: Basic Agent Implementation in Microsoft Foundry
+
+In Module 3, we'll create a simple RAG agent to consume data previously indexed in Azure AI Search. For that purpose, we're going to use Microsoft Foundry Agent Service and an OpenAI model.
+
+<div id="sticky-banner" className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="flex items-center justify-center mx-auto">
+        <div className="flex items-center">
+            <div className="inline-flex items-center justify-center w-9 h-9 mr-2 bg-white rounded-full">
+                <span>⏰</span>
+            </div>
+            <div className="text-2xl font-bold">Estimated time: 30 minutes</div>
+        </div>
+    </div>
+</div>
+<br></br>
+**Learning Objectives**
+
+By completing this module, you will learn how to:
+- Deploy a model and configure connections in an AI Foundry project.
+- Create and configure a single agent with Azure AI Search for knowledge retrieval.
+
+## Architecture
+
+The target architecture for this module is illustrated below:
+
+<div className="flex justify-center">
+    <img className="w-[60%]" src={Architecture}/>
+</div>
+
+## Implementation steps
+
+:::info 
+To automate the agent configuration (chat completion model provisioning, Azure AI Search connection creation and agent configuration), you can also run the following script with the `-Module3.1` parameter:
+
+```powershell title="Deploy SQL Server and Database"
+.\deploy-infra.ps1 -Module Module3.1 -ConfigureAgent
+```
+:::
+
+## Deploy a chat completion model
+
+To be able to chat with our agent, we need to first deploy an appropriate chat completion AI model in our Microsoft Foundry project:
+
+1. Navigate to your Microsoft Foundry project resource in the Azure portal (i.e., `project-ai-<id>`). You can also access the Foundry portal directly from [https://ai.azure.com/](https://ai.azure.com/) and select your project.
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={FoundryPortalAccess}/>
+    </div>
+
+1. Click on the _"Build"_ tab and go to _"Models"_ to deploy a new **gpt-4.1 nano** base model with default settings:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[60%]" src={DeployCompletionModel}/>
+        <img className="w-[40%] m-5" src={DeployGPT41Nano}/>
+    </div>
+
+    For the purpose of this workshop, we're going to use the `gpt-4.1 nano` model as it is a simple and economical model for basic RAG operations. However, depending on your use case, you might want to select a different model. You can filter available models by capabilities or intended tasks (e.g., chat, code generation, etc.).
+
+    :::warning Completion model choice
+    As mentioned in the [first module](../module1/#what-are-the-specificities-of-enterprise-environments), the choice of the model is critical as it directly impacts the cost and performance of your agent. **Using the latest and greatest is not always the best choice** as it tends to be much more expensive and sometimes overkill for your use case. As a best practice, always evaluate your AI needs (function calling, image generation, etc.) and test different models, starting from the cheapest to find the best fit. Make sure to use the Azure [AI Foundry Models](https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/microsoft/) (use [this link](https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/) for OpenAI models) pricing page to see costs per model and also check if it is available in the **Canada East** or **Canada Central** region.
+    :::
+
+1. Once the model is deployed, you should see it in the list of available models in your Foundry project:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={GPTModelDeployed}/>
+    </div>
+
+## Create Azure AI Search connection
+
+1. Create a new connection to your Azure AI Search resource created in [Module 2](../module2/#provision-azure-ai-search-instance-and-configure-index). To do this, from the Foundry portal, go to _"Operate"_→_"Admin"_→_&lt;Project&gt;_→_"Add connection"_→_"Azure AI Search"_→_"Connect Manually"_:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[40%]" src={AddAzureAISearchIndex}/>
+    </div>
+
+    - **Endpoint**: `https://srch-ai-<id>.search.windows.net`. You can get this value directly from the Azure Search resource.
+    - **Auth Type**: "Azure Active Directory". This will use the managed identity attached to this resource.
+    - **Connection Name**: `project-ai-<id>-conn-search`
+
+## Create a simple agent in AI Foundry (via interface)
+
+1. From the Foundry portal, click on the _"Build"_ tab and go to _"Agents"_ to create a new `ai-knowledge-agent` agent:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={CreateAgent}/>
+    </div>
+
+Use the following information:
+
+- **Model**: Select the previously deployed `gpt-4.1 nano` model.
+- **Instructions**: 
+
+    ```plaintext
+    # PURPOSE
+
+    You are an agent specialized in AI-related questions. You help users improve their AI-related knowledge based on several specialized articles.
+
+    # INSTRUCTIONS		
+            
+    - Provide detailed answers useful for practitioners. Avoid generic responses.
+    - **All** inquiries seeking information require a search.
+    - You **must never** rely on internal knowledge alone; searches **must** be performed every time users request information.
+    - If no relevant information is found in the 'ai-knowledge-index' index, you **must explicitly state that you cannot answer the question**.
+    - Your responses **must be strictly based on retrieved information**.
+    - You **must not** speculate, infer, assume, or provide external knowledge beyond what is contained within 'ai-knowledge-index'.
+    - **Dates, times, historical details, or contextual assumptions must never be modified**.
+    - **There are no exceptions** to performing searches when the user seeks information.
+    - EVERY answer must ALWAYS provide citations when using the Azure AI Search tool and render them as: "【message_idx:search_idx†source_name】" replacing values dynamically with values from context.
+    - Make your answers concise.
+
+    # WORKFLOW
+
+    - When asked about AI topics:
+        - If the question relates to AI article data, **ALWAYS** retrieve relevant data using the 'ai-knowledge-index' search index.
+        - Answer the question based on retrieved data.
+    ```
+
+1. On the _"Tools"_ section, add a new tool and select _"Azure AI Search"_:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={AISearchToolConnection}/>
+    </div>
+
+1. Click on _"Connect to a new resource"_ and select the previously created connection to your Azure AI Search resource: 
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[35%] m-5" src={CreateNewResourceAISearchTool}/>  
+        <img className="w-[65%] m-5" src={SelectAISearchConnection}/>
+    </div>
+
+1. Select the `ai-knowledge-index` index in the list and click on _"Add"_:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={SelectAISearchIndex}/>
+    </div>
+
+1. On the tool parameters, set the query type to **Vector**:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={VectorSearchQueryConfig}/>
+    </div>
+
+
+1. On the playground chat, test your agent with the following query: 
+
+    ```plaintext
+    How to build a neural network?
+    ```
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={TestAgentFoundry}/>
+    </div>
+
+ 
+    If the agent answers it correctly based on the indexed data including citations, congratulations! You have successfully created a simple RAG agent using Microsoft Foundry and Azure AI Search.
+
+## Module wrap-up
+
+In this module, you successfully created your first RAG (Retrieval-Augmented Generation) agent using Microsoft Foundry and Azure AI Search. Here's what you accomplished:
+
+**AI Model Deployment**
+- Deployed a GPT-4.1 nano chat completion model in your Microsoft Foundry project
+- Understood the importance of model selection based on cost, performance, and regional availability
+- Learned to evaluate AI model needs and choose appropriate models for specific use cases
+- Configured the model deployment with default settings for basic RAG operations
+
+**Azure AI Search Integration**
+- Created a secure connection to your Azure AI Search resource from the AI Foundry project
+- Configured the connection using Azure Active Directory authentication with managed identities
+- Established the foundation for knowledge retrieval from indexed data
+- Linked the AI Search connection to enable seamless data access for your agent
+
+**RAG Agent Configuration**
+- Created your first AI agent (`ai-knowledge-agent`) in Microsoft Foundry using the portal interface
+- Configured detailed system instructions to guide the agent's behavior and response patterns
+- Implemented strict guidelines ensuring responses are based solely on retrieved data
+- Added citation requirements to provide transparency and traceability in agent responses
+- Emphasized the importance of search operations for every information request
+
+**Azure AI Search Tool Setup**
+- Integrated the Azure AI Search tool into your agent's capabilities
+- Connected the tool to your AI Search resource using the previously created connection
+- Selected the `ai-knowledge-index` as the knowledge source for your agent
+- Configured vector search as the query type for semantic understanding and better retrieval accuracy
+- Enabled the agent to perform intelligent searches across your indexed AI knowledge articles
+
+**Agent Testing & Validation**
+- Tested your agent using the AI Foundry playground with sample queries
+- Verified that the agent correctly retrieves information from indexed data
+- Confirmed that responses include proper citations using the Azure AI Search tool
+- Validated the RAG pattern: retrieving relevant information before generating responses
+- Ensured the agent follows the configured instructions and workflow
+
+Your agent is now operational within Microsoft Foundry, capable of answering AI-related questions by retrieving information from your indexed knowledge base. In the next module, you'll expose this agent to Microsoft 365 channels, making it accessible to end users through Teams and Copilot.
+
+<div className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="text-2xl font-bold mb-3">Ready to continue?</div>
+    <a href="../modules/module4" className="inline-block px-8 py-3 bg-white text-fuchsia-600 font-bold rounded-xl hover:bg-gray-100 transition-all duration-300 hover:scale-105 shadow-lg no-underline hover:no-underline">
+        <div>Go to Module 4 →</div>
+    </a>
+</div>

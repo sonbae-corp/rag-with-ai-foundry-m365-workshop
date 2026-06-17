@@ -1,0 +1,595 @@
+import WebpackOutput from './img/webpack_output.png'; 
+import WebpackDistFolder from './img/webpack_files.png';
+import WebpackMeme from './img/webpack_meme.png';
+import AzureResources from './img/app_bot_services.png';
+import BotMessagingEndpoint from './img/bot_endpoint.png';
+import WebAppDeployment from './img/web_app_deployment.png';
+import WebAppEnvVars from './img/app_env_vars_kv.png';
+import WebAppLogStream from './img/web_app_logstream.png';
+import TeamsPackageVSCode from './img/zip_package_vscode.png'
+import BotId from './img/bot_id.png'
+import BotPublicAccess from './img/bot_public_access.png'
+import AtkOutput from './img/atk_output.png';
+import SideloadDevPackage from './img/sideload_dev_package.png';
+import TestBot from './img/test_bot.png';
+import TeamsManageApps from './img/teams_manage_apps.png';
+import TeamsUploadNewApp from './img/teams_upload_new_app.png';
+import TeamsAppAdded from './img/app_admin_deployed.png';
+import Congrats from './img/congrats.gif';
+import TeamsAppsStore from './img/teams_app_store.png';
+import Architecture from './img/architecture.png';
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Module 6: Deploy Your Agent to Azure and Microsoft 365
+
+In the previous modules, we implemented various functionalities of our bot including data retrieval from both. However, we always tested locally.
+In this module, we deploy for a full production scenario.
+
+<div id="sticky-banner" className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="flex items-center justify-center mx-auto">
+        <div className="flex items-center">
+            <div className="inline-flex items-center justify-center w-9 h-9 mr-2 bg-white rounded-full">
+                <span>⏰</span>
+            </div>
+            <div className="text-2xl font-bold">Estimated time: 45 minutes</div>
+        </div>
+    </div>
+</div>
+<br></br>
+**Learning Objectives**
+
+By completing this module, you will learn how to:
+- Deploy your agent infrastructure to Azure supporting the agent.
+- Optimize the code and files of your bot for deployment.
+- Deploy your code to Azure App Service.
+- Package and deploy the agent as a Teams application and make it available to users via the Teams app store.
+
+## Architecture
+
+The target architecture for this module is illustrated below:
+
+<div className="flex justify-center">
+    <img className="w-[60%]" src={Architecture}/>
+</div>
+
+## Implementation steps
+
+### Provision the web application and bot instance
+
+For now, we rely on a local server for the bot logic and a dev bot service instance migrated from the bot framework developer portal. For production scenarios, we need to provision a web application to host the bot logic and a bot service instance configured for production.
+
+1. Add the two following variables in the `variables.local.ps1` file:
+
+    ```powershell
+    $ENV_AZURE_SEARCH_APP_OAUTH_CONNECTION_CLIENT_ID="<your-client-id>"
+    $ENV_AZURE_SEARCH_APP_OAUTH_CONNECTION_CLIENT_SECRET=<secret>
+    ```
+
+    :::info
+    Secret for `ENV_AZURE_SEARCH_APP_OAUTH_CONNECTION_CLIENT_SECRET` should be retrieved from your secure secret manager. This is the same client secret used for deployment.
+    :::
+
+    These variables correspond to the OAuth2 client ID and secret of the Entra application we created in module 5 to allow the bot service to connect to Microsoft Graph. They will be used in the bot service instance configuration.
+
+1. Run the following command to deploy new Azure resources:
+
+    ```powershell title="Deploy resources"
+    .\deploy-infra.ps1 -Module 'Module6' -ConfigureWebApp
+    ``` 
+    The script will provision three new resources:
+    - A **key vault** to store sensitive information used in the web application.
+    - A **web application** to host the bot logic.
+    - A **bot service** instance configured with MS Teams and Copilot channels and web application as messaging endpoint.
+
+    RBAC permissions are also automatically configured to allow the web application to access the key vault and bot service with its user assigned managed identity.
+
+    At the end of the deployment you should see these three new resources in your resource group:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={AzureResources}/>
+    </div>
+
+    ➡️ The bot instance is automatically configured to use the newly created web application as its messaging endpoint:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={BotMessagingEndpoint}/>
+    </div>
+
+    ➡️ The web application environment variables are also automatically configured to use the key vault references for sensitive information:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={WebAppEnvVars}/>
+    </div>
+
+    Now that we have a proper web application and bot service instance in Azure, we need to update the bot logic to use the managed identity to connect to the bot service when running in Azure.
+
+### Update the bot logic to use a managed identity in Azure
+
+<Tabs defaultValue="typescript" values={[
+{ label: 'TypeScript', value: 'typescript' },
+{ label: 'Python', value: 'python' },
+]}>
+<TabItem value="typescript">
+
+1. In the `agent.ts`, update the `getCredential()` method to add a condition to use the managed identity when running in Azure:
+
+    ```typescript
+    public getCredential(): TokenCredential {
+
+        const isAzure = !!process.env["WEBSITE_SITE_NAME"];
+
+        if (isAzure) {
+            console.log("Running in Azure. Using user assigned managed identity credential.");
+            
+            const clientId = process.env["ENV_AZURE_DEPLOY_USER_MANAGED_IDENTITY_CLIENT_ID"];
+            if (!clientId) {
+            throw new Error("ENV_AZURE_DEPLOY_USER_MANAGED_IDENTITY_CLIENT_ID is not set");
+            }
+
+            return new DefaultAzureCredential({ managedIdentityClientId: clientId });
+        } else {
+        console.log("Running locally. Using SPN identity credential.");
+
+        return new ClientSecretCredential(
+            config.tenantId!,
+            config.clientId!,
+            config.clientSecret!
+        );
+    }
+    ```
+    As explained in [module 5](../module5/#setup-authentication-prerequisites), `DefaultAzureCredential` will automatically use the managed identity assigned to the web application when running in Azure based on the `clientId` and `tenantId` environment variables. We use the variable `WEBSITE_SITE_NAME` to detect if the application is running in Azure App Service as it is only set here.
+
+    :::important Managed identity VS client id/secret
+    As a best practice, always use a managed identity to authenticate your applications when running in Azure. This approach eliminates the need to store sensitive credentials like client secrets in your application code or configuration files, reducing the risk of credential exposure. Additionally, with a managed identity, you don't have to worry about rotating secrets or managing their lifecycle, as Azure handles this for you.
+    :::
+
+    #### Optimize application files for deployment (Node.js only)
+
+    Azure App Service deployment can be done by simply uploading a [ZIP package](https://learn.microsoft.com/en-us/azure/app-service/deploy-zip?tabs=cli) containing the files for your application. However, for Node.js applications, deployment into Azure App Service expects the entire `node_modules` folder to be uploaded on the server for the runtime code to resolve dependencies. This folder can be quite large and may contain (many) unnecessary files that are not required for the application to run. Including it every time **regardless of the update size** can lead to significant deployment delays:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[30%]" src={WebpackMeme}/>
+    </div>
+
+    To avoid this issue, we use [Webpack](https://webpack.js.org/) to reduce the size of JavaScript application deployment packages by bundling only the necessary code and dependencies, significantly speeding up the deployment process. It produces static "standalone" files that already include the specific parts of their dependencies they need to run—and **only those parts**. This process is called **tree-shaking** in JavaScript. After bundled, the application doesn't need the `node_modules` folder anymore.
+
+    1. Add the following development dependencies to the `package.json` and run `npm i`:
+
+            ```json
+            "devDependencies": {
+                ...,
+                "ts-node": "^10.9.2",
+                "webpack": "5.97.1",
+                "webpack-cli": "^5.1.4",
+                "copy-webpack-plugin": "12.0.2",
+                "ts-loader": "9.4.4"
+            }
+            ```
+
+    1. From the root folder of your project, create a new file named `webpack.app.js` with the following content:
+
+            ```javascript
+                const path = require("path");
+                const CopyWebpackPlugin = require("copy-webpack-plugin");
+
+                module.exports = {
+                    mode: "production",
+                    devtool: "source-map",
+                    optimization: {
+                        minimize: false
+                    },
+                    entry: path.resolve(__dirname, "./src/index.ts"),
+                    target: "node",
+                    externalsPresets: { node: true }, // in order to ignore built-in modules like path, fs, etc.
+                    module: {
+                        rules: [
+                            {
+                                test: /\.ts?$/,
+                                use: [                           
+                                {
+                                    loader: "ts-loader"
+                                }          
+                                ],
+                                exclude: [
+                                    /node_modules/
+                                ]
+                            }
+                        ]
+                    },
+                    resolve: {
+                        extensions: [".ts",".js"]
+                    },
+                    output: {
+                        filename: "index.js",
+                        path: path.resolve(__dirname, "./dist"),
+                        clean: true
+                    },
+                    plugins: [
+                        new CopyWebpackPlugin(
+                            {
+                            patterns: [
+                                { from: path.resolve(__dirname, "./web.config") },        
+                                { from: path.resolve(__dirname, "./package.json") }
+                            ]
+                            }
+                        ),
+                    ],
+                    ignoreWarnings: [
+                        {
+                            message: /Critical dependency: the request of a dependency is an expression/
+                        },
+                        {
+                            message: /Critical dependency: require function is used in a way in which dependencies cannot be statically extracted/
+                        }
+                    ]
+                };
+                ```
+
+
+        :::tip
+        Webpack can be used to bundle various types of JavaScript applications, including web applications, server-side applications, and libraries. In this case, we are using it to bundle a Node.js server-side application for deployment to Azure App Service.
+        :::
+
+    1. Update the `package.json` file to add a new build script:
+
+            ```json
+            "scripts": {
+                ...,
+                "start": "node ./index.js",
+                "bundle": "webpack --config ./webpack.app.js"
+            }
+            ```
+
+    1. From the root folder of your project, bundle the application with Webpack running the command `npm run bundle`:
+
+        <div className="flex justify-center mb-8">
+            <img className="w-[60%]" src={WebpackOutput}/>
+        </div>
+
+        This will bundle all the necessary files into the `dist` folder:
+
+        <div className="flex justify-center mb-8">
+            <img className="w-[30%]" src={WebpackDistFolder}/>
+        </div>
+
+        :::info
+        Notice we copy the `web.config` and `package.json` files to the `dist` folder as they are required by Azure App Service to run the Node.js application (the server will automatically run the `npm run start` command).
+        :::
+
+        Now we have the application bundled and optimized for deployment, it is time to deploy it to Azure App Service.
+
+</TabItem>
+<TabItem value="python">
+
+1. In `agent.py`, update the `get_credential()` function to add a condition to use the managed identity when running in Azure:
+
+    ```python
+    from azure.identity import ClientSecretCredential, DefaultAzureCredential
+
+    ...
+
+    def get_credential():
+
+        # Check if running in Azure
+        is_azure = bool(os.environ.get("WEBSITE_SITE_NAME"))
+
+        if is_azure:
+            print("Running in Azure. Using user assigned managed identity credential.")
+
+            client_id = os.environ.get("ENV_AZURE_DEPLOY_USER_MANAGED_IDENTITY_CLIENT_ID")
+            if not client_id:
+                raise ValueError("ENV_AZURE_DEPLOY_USER_MANAGED_IDENTITY_CLIENT_ID is not set")
+
+            return DefaultAzureCredential(managed_identity_client_id=client_id)
+
+        print("Running locally. Using SPN identity credential.")
+
+        return ClientSecretCredential(
+            tenant_id=config.ENV_AZURE_APP_TENANT_ID,
+            client_id=config.ENV_AZURE_APP_CLIENT_ID,
+            client_secret=config.ENV_AZURE_APP_CLIENT_SECRET,
+        )
+
+
+    # The credential is then used when creating the Foundry project client
+    project_client = AIProjectClient(
+        endpoint=config.ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT,
+        credential=get_credential(),
+    )
+    ```
+    As explained in [module 5](../module5/#setup-authentication-prerequisites), `DefaultAzureCredential` will automatically use the managed identity assigned to the web application when running in Azure based on the `clientId` and `tenantId` environment variables. We use the variable `WEBSITE_SITE_NAME` to detect if the application is running in Azure App Service as it is only set here.
+
+    :::important Managed identity VS client id/secret
+    As a best practice, you should always use a managed identity to authenticate your applications when running in Azure. This approach eliminates the need to store sensitive credentials like client secrets in your application code or configuration files, reducing the risk of credential exposure. Also, with a managed identity, you don't have to worry about rotating secrets or managing their lifecycle, as Azure handles this for you.
+    :::
+
+</TabItem>
+</Tabs>
+
+### Deploy to Azure App Service
+
+    1. Open a new terminal from Visual Studio Code and run the following script from the workshop root folder. Use the name of your web application (i.e `app-ai-<id>`) for the `-WebAppName` parameter and the relative of your dist folder (ex: `./apps/typescript/AIWorkshopAgentDevFranck/dist` for Node.js and `./apps/typescript/AIWorkshopAgentDevFranck` for Python) for the `-DistFolderPath` parameter:
+
+        ```powershell title="Deploy to Azure App Service"
+        ./deploy-app.ps1 -WebAppName "app-ai-<id>" -DistFolderPath "<your_path>"
+        ```
+
+    :::tip Azure CLI over Azure PowerShell
+    For app service deployment you can use either Azure PowerShell or Azure CLI. The latter is often preferred for its simplicity and reliability, especially for tasks like deploying web applications.
+    :::
+
+    The deployment can be monitored by going directly in the Web Application resource in Azure (_Deployment_→_Deployment Center_→_Logs_):
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={WebAppDeployment}/>
+    </div>
+
+    1. Once the deployment is complete, go to the application _Log Stream_ to see if your application has been correctly provisioned. You should see the server starting and waiting for requests (ex: for Node.js):
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[70%]" src={WebAppLogStream}/>
+    </div>
+    
+    Now that the application is up and running in Azure, we need to package the application as a Teams app and deploy it to our Microsoft 365 tenant.
+
+### Build the Teams package
+
+A Teams package is a ZIP file containing a manifest (`manifest.json`) describing the capabilities of the app and the related resources (icons, localization files, etc.). In our case, it defines the bot ID to use to handle messages for both Copilot (`copilotAgents`) and Teams (`bots`):
+
+        ```json
+        {
+            "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.24/MicrosoftTeams.schema.json",
+            "manifestVersion": "1.24",
+            ...
+            "copilotAgents": {
+                "customEngineAgents": [
+                    {
+                        "type": "bot",
+                        "id": "${{BOT_ID}}"
+                    }
+                ]
+            },
+            "bots": [
+                {
+                    "botId": "${{BOT_ID}}",
+                    "scopes": [
+                        "copilot",
+                        "personal",
+                        "team"
+                    ],
+                    "supportsFiles": false,
+                    "isNotificationOnly": false,
+                    "commandLists": [
+                        {
+                            "scopes": [
+                                "copilot",
+                                "personal"
+                            ],
+                            "commands": [
+                                {
+                                    "title": "How can you help me?",
+                                    "description": "How can you help me?"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            ...
+        }
+        ```
+
+This manifest is based on a JSON schema](https://learn.microsoft.com/en-us/microsoft-365/extensibility/schema/?view=m365-app-1.24), regularly updated by Microsoft according to new available capabilities. The package is then uploaded to the Teams admin center to deploy the application to your tenant and make it accessible to users. To generate it, you have multiple options:
+
+- Manually by creating a ZIP archive (not recommended)
+- Using the [Microsoft 365 Agents Toolkit CLI](https://learn.microsoft.com/en-us/microsoftteams/platform/toolkit/microsoft-365-agents-toolkit-cli) (`atk`)
+- Using the [Microsoft 365 Agents Toolkit VS Code extension](https://marketplace.visualstudio.com/items?itemName=TeamsDevApp.ms-365-agents-toolkit)
+
+In our case, we will use the CLI to build the package. The Microsoft Agents Toolkit (extension or CLI) works with the concept of environment defined in the `env` folder. Each environment can have its own configuration and settings (like different bot IDs, endpoints, etc.). By default, the toolkit creates the following environments:
+- `playground`: used for testing in the Microsoft 365 Agents Playground (without any connectivity to Azure resources or Microsoft 365 services)
+- `local`: used for local debugging, when the app is running on your local machine.
+- `dev`: used for remote debugging and testing, when an app is already deployed in Azure.
+
+:::important Network access for the bot service
+For the Teams client to be able to call your bot in Azure, this one must have the **public access** enabled:
+
+        <div className="flex justify-center mb-8">
+            <img className="w-[40%]" src={BotPublicAccess}/>
+        </div>
+:::
+
+You can also create your own custom environments (like `prod`, `staging`, etc.) by creating new `.env` files in the `env` folder and adding the related configuration.
+
+1. From the root folder of your project, update the `.env.dev` file with the following variables (leave the other variables untouched as they are not used):
+
+        ```env
+        BOT_ID=<ex: 25934a87-2edc-4d29-a9d1-b185fcbfaf47>
+        TEAMS_APP_ID=<ex: 95eff6fd-ed69-4604-8cab-db337ed13eb0>
+        ```
+    Where:
+
+    - `BOT_ID`: The bot id in Azure:
+
+        <div className="flex justify-center mb-8">
+            <img className="w-[40%]" src={BotId}/>
+        </div>
+
+    - `TEAMS_APP_ID`: Unique ID of the application. For the first deployment, you can generate a [new one](https://www.guidgenerator.com/). For subsequent deployments, use the same ID to update the existing application in the Teams admin center. 
+
+1. From the root folder of your project, in a new terminal, run the following command to build the Teams package for the `dev` environment:
+
+        ```powershell title="Build Teams package"
+        atk package --env dev
+        ```
+
+    This will generate a ZIP package in the `packages` folder containing the `manifest.json` and related resources with the correct bot ID and endpoints for the `dev` environment:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[100%]" src={AtkOutput}/>
+    </div>
+ 
+
+    :::tip
+    You can also use the Agents 365 SDK VS Code extension to package an application:
+    <div className="flex justify-center mb-8">
+        <img className="w-[50%]" src={TeamsPackageVSCode}/>
+    </div>
+
+    In real project scenarios, this step should be automated as part of a CI/CD pipeline using tools like GitHub Actions or Azure DevOps to ensure consistent and repeatable deployments. Additionally, as a best practice, you should update the version in the `manifest.json` and ZIP package name accordingly. **You can't deploy a package with the same version twice in the Teams admin center**.
+    :::
+
+    Before deploying the package to users, we need to make sure it works as expected. For this, we can sideload it in our Teams client.
+
+1. Open Microsoft Teams web client and go to the _Apps_ section. At the bottom left, click on _Manage your apps_ and select _Upload an app_ then _Upload a customised app_. Select the ZIP package just created in the `appPackage/build` folder:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[50%]" src={SideloadDevPackage}/>
+    </div>
+
+    Ask the question: _"Why LLMs fail to reason globally?"_. If everything is working as expected, the bot should prompt you to sign in:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[50%]" src={TestBot}/>
+    </div>
+    
+    Now that we confirmed our bot was working properly, it is time to make it available to all users in our Microsoft 365 tenant.
+
+## Deploy the package
+
+To deploy a Teams package, you must have the "Teams administrator" role. In organizations where this role is restricted, coordinate with your Microsoft 365 admin team to complete this step.
+
+1. From the [Azure portal](https://portal.azure.com/?feature.msaljs=true#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade/~/aadmigratedroles/provider/aadroles), activate your Teams Administrator role.
+
+1. Go to the [Teams administration center](https://admin.teams.microsoft.com/) (you may have to logout/login again) and go to _Teams apps_→_Manage apps_:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[60%]" src={TeamsManageApps}/>
+    </div>
+
+1. On the top right corner, select _Actions_→_Upload a new app_ and upload the same ZIP package created previously:
+
+    <div className="flex justify-center mb-8 space-x-2">
+        <img className="h-[130px] w-[295px]" src={TeamsUploadNewApp}/>
+        <img className="w-[50%]" src={TeamsAppAdded}/>
+    </div>
+
+    :::important 
+    - In Teams, you can restrict an application to specific user groups by configuring app permission policies in the Teams admin center. This is particularly useful in production scenarios to control which users or groups have access to specific apps within the organization, for instance in a UAT phase when only specific business people need to access.
+    - The application can take time to appear in the teams app catalog (from minutes to hours) depending on Microsoft 365 tenant configuration.
+    - Making an update to your app (ex: in the web application) doesn't require you to redeploy a package. You only need to redeploy the package when you make changes to the app manifest (title, description, capabilities, etc.).
+    :::
+
+    The application is now listed in the Teams app catalog under the section _"Built for your organization"_:
+
+    <div className="flex justify-center mb-8">
+        <img className="w-[100%]" src={TeamsAppsStore}/>
+    </div>
+
+## Module wrap-up
+
+In this module, you successfully deployed your agent to Azure and made it available to end users through Microsoft Teams and Copilot. Here's what you accomplished:
+
+**Azure Infrastructure Provisioning**
+- Provisioned production-ready Azure resources including Azure Key Vault, Azure App Service, and Azure Bot Service
+- Configured RBAC permissions to enable secure communication between services using managed identities
+- Set up OAuth connection credentials in the bot service for Microsoft Graph API authentication
+- Configured the bot service messaging endpoint to point to the Azure App Service hosting your bot logic
+- Integrated Key Vault references in the web application environment variables for secure secrets management
+
+**Managed Identity Integration**
+- Updated the bot authentication logic to detect the runtime environment (local vs. Azure)
+- Implemented credential switching between client secret (local development) and managed identity (Azure production)
+- Leveraged `DefaultAzureCredential` to automatically use the user-assigned managed identity in Azure App Service
+- Eliminated the need to store sensitive credentials like client secrets in production configuration files
+- Applied Azure best practices by using managed identities to reduce security risks and simplify credential lifecycle management
+
+**Application Optimization with Webpack**
+- Installed and configured Webpack as a JavaScript bundler to optimize deployment packages
+- Created a Webpack configuration file to bundle TypeScript application code into standalone JavaScript files
+- Implemented tree-shaking to include only necessary code and dependencies, eliminating unused modules
+- Reduced deployment package size significantly by excluding the large `node_modules` folder
+- Configured webpack plugins to copy essential files like `web.config` and `package.json` to the distribution folder
+- Added build scripts to the package.json for streamlined bundling and deployment workflows
+
+**Azure App Service Deployment**
+- Bundled the application using Webpack to create an optimized deployment package in the `dist` folder
+- Deployed the bundled application to Azure App Service using Azure CLI with ZIP package deployment
+- Monitored deployment progress through the Azure portal's Deployment Center logs
+- Verified successful application startup and health through App Service log streams
+- Confirmed the application was correctly provisioned and ready to handle incoming requests from Microsoft 365 channels
+
+**Teams Application Packaging**
+- Configured environment-specific settings using the Microsoft 365 Agents Toolkit environment concept
+- Updated the `.env.dev` file with production bot ID and Teams app ID for the dev environment
+- Used the Microsoft 365 Agents Toolkit CLI (`atk`) to build a Teams application package
+- Generated a ZIP package containing the `manifest.json` and related resources with correct configuration
+- Enabled public access on the bot service to allow Teams clients to communicate with the Azure-hosted bot
+- Sideloaded the Teams package for testing before organization-wide deployment
+
+**Production Deployment to Microsoft 365**
+- Activated Teams Administrator role through Azure PIM to access the Teams admin center
+- Uploaded the Teams application package to the Teams admin center for organization-wide deployment
+- Configured the application to appear in the Teams app catalog under "Built for your organization"
+- Understood app permission policies for restricting access to specific user groups in UAT or production scenarios
+- Recognized the distinction between app manifest updates (requiring redeployment) and code updates (not requiring redeployment)
+
+Your agent is now fully deployed in a production environment and available to users across your Microsoft 365 tenant through both Teams and Copilot. You've successfully completed the journey from local development to enterprise-grade deployment, implementing security best practices, optimizing deployment processes, and making your AI-powered knowledge assistant accessible to your organization.
+
+<style>{`
+  @keyframes firework {
+    0% { transform: translate(0, 0) scale(0) rotate(0deg); opacity: 1; }
+    50% { opacity: 1; }
+    100% { transform: translate(var(--x), var(--y)) scale(1) rotate(360deg); opacity: 0; }
+  }
+  
+  .fireworks-container {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .firework {
+    position: absolute;
+    width: 10rem;
+    height: 10rem;
+    pointer-events: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        color: #ffffff;
+    animation: firework 1.5s ease-out infinite;
+  }
+  
+  .firework:nth-child(1) { left: 10%; top: 20%; --x: -50px; --y: -100px; animation-delay: 0s; }
+  .firework:nth-child(2) { left: 20%; top: 30%; --x: 60px; --y: -120px; animation-delay: 0.3s; }
+  .firework:nth-child(3) { left: 80%; top: 25%; --x: 40px; --y: -90px; animation-delay: 0.6s; }
+  .firework:nth-child(4) { left: 90%; top: 35%; --x: -70px; --y: -110px; animation-delay: 0.9s; }
+  .firework:nth-child(5) { left: 15%; top: 40%; --x: 80px; --y: -80px; animation-delay: 1.2s; }
+  .firework:nth-child(6) { left: 85%; top: 45%; --x: -60px; --y: -100px; animation-delay: 0.2s; }
+  .firework:nth-child(7) { left: 50%; top: 20%; --x: 0px; --y: -130px; animation-delay: 0.5s; }
+  .firework:nth-child(8) { left: 30%; top: 50%; --x: -80px; --y: -70px; animation-delay: 0.8s; }
+  .firework:nth-child(9) { left: 70%; top: 55%; --x: 70px; --y: -90px; animation-delay: 1.1s; }
+  .firework:nth-child(10) { left: 40%; top: 30%; --x: -40px; --y: -110px; animation-delay: 0.4s; }
+`}</style>
+
+<div className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl fireworks-container">
+    <div className="firework">✨</div>
+    <div className="firework">✨</div>
+    <div className="firework">✨</div>
+    <div className="firework">✨</div>
+    <div className="firework">✨</div>
+    <div className="firework">✨</div>
+    <div className="firework">✨</div>
+    <div className="firework">✨</div>
+    <div className="firework">✨</div>
+    <div className="firework">✨</div>
+    <div className="text-2xl font-bold mb-3">🎉 **Congrats!** 🎉</div>
+    <div className="text-lg mb-4">You have completed all the modules of this workshop and built a fully functional AI-powered knowledge assistant integrated with Microsoft 365 services. We'd love to hear your feedback!</div>
+    <div className="flex justify-center mt-8 mb-8">
+        <img className="w-[50%]" src={Congrats}/>
+    </div>
+    <a href="https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=DQSIkWdsW0yxEjajBLZtrQAAAAAAAAAAAAN__rlRd21UMUtJUzBQVFQ0UFZFTjhNTkU5R0Q5WVlKMC4u" className="inline-block px-8 py-3 bg-white text-fuchsia-600 font-bold rounded-xl hover:bg-gray-100 transition-all duration-300 hover:scale-105 shadow-lg no-underline hover:no-underline">
+        <div>Complete the survey →</div>
+    </a>
+</div>

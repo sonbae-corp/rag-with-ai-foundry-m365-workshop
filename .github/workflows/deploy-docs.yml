@@ -1,0 +1,47 @@
+name: Deploy documentation in DocusaurOps
+
+permissions:
+  id-token: write
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      app-name:
+        description: 'Name of the DocusaurOps app (alphanumeric, hyphens, underscores only)'
+        required: true
+        type: string
+      app-path:
+        description: 'URL path for the app (without leading or trailing slash, e.g., "my-app")'
+        required: true
+        type: string
+      enable-auth:
+        description: 'Enable authentication on the site'
+        required: false
+        type: boolean
+        default: false
+      action:
+        description: 'Action to perform: deploy or rollback'
+        required: false
+        type: choice
+        options:
+          - deploy
+          - rollback
+        default: 'deploy'
+
+  push:
+    paths:
+      - 'documentation/**'
+jobs:
+    
+    deploy:
+        
+        name: Deploy site in DocusaurOps
+        uses: sonbae-corp/docusaurops-core/.github/workflows/deploy-site.yml@main
+        with:
+            app-name: 'Build It, Ground It, Ship It: RAG Agents with Azure and Microsoft 365'
+            app-path: 'aicd-montreal-2026-build-it-ship-it'
+            action: 'deploy'
+            enable-auth: false
+            documentation-path: 'documentation'
+        secrets: inherit

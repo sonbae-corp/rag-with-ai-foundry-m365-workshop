@@ -1,0 +1,912 @@
+---
+toc_max_heading_level: 4
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import Architecture from './img/architecture_module4.png';
+import M365NewApp from './img/m365_sdk_new_app.png';
+import BotDevPortal from './img/bot_dev_portal.png';
+import DefaultVSCodeTypeScriptProject from './img/default_vs_project.png';
+import DefaultVSCodePythonProject from './img/default_vs_project_python.png';
+import M365AgentSDKExtensionSignIn from './img/m365_extension_signin.png';
+import LaunchDebugConfig from './img/launch_debug_config.png';
+import M365AgentsPlayground from './img/m365_agents_playground.png';
+import M365PlaygroundTest from './img/m365_playground_test.png';
+import StreamingResponsePlayground from './img/streaming_response_playground.png';
+import FeedbackInputPlayground from './img/builtin_feedback_m365.png';
+import DebugInTeams from './img/debug_in_teams.png';
+import TeamsUploadApp from './img/upload_teams_app.png';
+import TeamsAddApp from './img/add_teams_app.png';
+import ChannelExperienceSelection from './img/channels_experiences_add.png';
+import BotFrameworkPortalMessagingEndpoint from './img/bot_portal_messaging_endpoint.png';
+import TeamsStreamingExperience from './img/teams_streaming_experience.png';
+import CopilotStreamingExperience from './img/copilot_chat_experience.png';
+import PythonPlaygroundTest from './img/python_playground.png';
+import PythonBaseProjectStructure from './img/python_base_project_structure.png';
+import PythonMeme from './img/python_meme.jpeg';
+
+# Module 4: Expose Your Agent to Teams and Copilot
+
+Now that we have a working agent in Microsoft Foundry, we need to make it available to end users through well-known Microsoft 365 channels. In this module, we will expose the agent in Foundry to Microsoft Teams and Copilot using the Azure Foundry SDK and the Microsoft 365 Agents SDK.
+
+<div id="sticky-banner" className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="flex items-center justify-center mx-auto">
+        <div className="flex items-center">
+            <div className="inline-flex items-center justify-center w-9 h-9 mr-2 bg-white rounded-full">
+                <span>⏰</span>
+            </div>
+            <div className="text-2xl font-bold">Estimated time: 1 hour</div>
+        </div>
+    </div>
+</div>
+<br></br>
+**Learning Objectives**
+
+By completing this module, you will learn how to:
+- Implement a custom agent application using Microsoft 365 Agents SDK and Microsoft Foundry SDK.
+- Use streaming and non-streaming interaction patterns.
+- Test the agent in both Microsoft 365 SDK playground and Teams.
+- Implement a custom feedback mechanism to capture user feedback from Teams.
+
+## Architecture
+
+The target architecture for this module is illustrated below:
+
+<div className="flex justify-center">
+    <img className="w-[60%]" src={Architecture}/>
+</div>
+
+## Implementation steps
+
+:::note
+For this part, you have the choice to use either **TypeScript/Node.js** or **Python** stack. Both implementations will be similar (more or less) and will use the same Microsoft Foundry SDK and Microsoft 365 Agents SDK libraries. However, expect more bumps on the road using Python...
+
+<div className="flex justify-center">
+    <img className="w-[20%]" src={PythonMeme}/>
+</div>
+:::
+
+### Setup agent project with Microsoft 365 Agents SDK 
+
+<Tabs defaultValue="typescript" values={[
+{ label: 'TypeScript', value: 'typescript' },
+{ label: 'Python', value: 'python' },
+]}>
+<TabItem value="typescript">
+
+1. In Visual Studio code, create a new project _Create a New Agent/App_→_Custom Engine Agent_→_Basic Custom Engine Agent_ with the Microsoft 365 Agents SDK VS Code extension (leave blank Azure OpenAI key as you won't need it). Then select "TypeScript" as programming language. Use the folder `apps` as root folder for your agent.
+
+    Use the name `AIWorkshopAgentDev<your name>` for the agent name(ex: **AIWorkshopAgentDevFranck**).
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={M365NewApp}/>
+    </div>
+
+    A new Visual Studio Code window should open with the generated project:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={DefaultVSCodeTypeScriptProject}/>
+    </div>
+
+    Add the following dependencies to `package.json` and run `npm i` from the root folder to install them:
+
+    ```json
+    "dependencies": {
+        "@microsoft/agents-hosting-express": "1.1.1",
+        "@microsoft/agents-activity": "1.1.1",
+        "@azure/ai-agents": "1.2.0-beta.2",
+        "@azure/ai-projects": "2.2.0"
+    }
+    ```
+
+2. From the Microsoft 365 Agents SDK extension, sign in to Microsoft 365 with your development account (for example, `your-user@your-tenant.onmicrosoft.com`):
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[30%]" src={M365AgentSDKExtensionSignIn}/>
+    </div>
+    
+3. From Visual Studio Code, select the `Debug in Microsoft 365 Agents Playground` debug configuration and press **F5** to run the local debugger:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={LaunchDebugConfig}/>
+    </div>
+
+    :::info
+    When asked for OpenAI key/endpoint just type anything (like _*_ for key/deployment name and https://nothing for endpoint) to proceed. 
+    :::
+
+    At this point, the playground should run and you should get the message _"Hi there! I'm an agent to chat with you."_. 
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={M365AgentsPlayground}/>
+    </div>
+</TabItem>
+<TabItem value="python">
+
+
+1. In Visual Studio code, create a new project _Create a New Agent/App_→_Custom Engine Agent_→_Basic Custom Engine Agent_ with the Microsoft 365 Agents SDK VS Code extension (leave blank Azure OpenAI key as you won't need it). Then select "Python" as programming language. Use the folder `apps` as root folder for your agent.
+
+    Use the name `AIWorkshopAgentDev<your name>` for the agent name(ex: **AIWorkshopAgentDevFranck**).
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={M365NewApp}/>
+    </div>
+
+    A new Visual Studio Code window should open with the generated project:
+
+    <div className="flex justify-center mb-10"> 
+        <img className="w-[50%]" src={DefaultVSCodePythonProject}/>
+    </div>
+
+
+1. From the root folder of the solution, create a new Python environment. In Visual Studio Code, press **F1**, type `Python: Create environment`, and press **Enter**. Select `Venv`and the Python version installed in your machine (ex: Python 3.12.2).
+
+1. Add the following dependencies to `requirements.txt` and run `pip install -r requirements.txt` from the `src` folder to install them:
+
+    ```plaintext
+    azure-core>=1.38.0
+    azure-ai-projects>=2.2.0
+    microsoft-agents-hosting-core>=0.7.0
+    ```
+1. From the Microsoft 365 Agents SDK extension, sign in to Microsoft 365 with your development account (for example, `your-user@your-tenant.onmicrosoft.com`):
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[30%]" src={M365AgentSDKExtensionSignIn}/>
+    </div>
+    
+1. From Visual Studio Code, select the `Debug in Microsoft 365 Agents Playground` debug configuration and press **F5** to run the local debugger:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={LaunchDebugConfig}/>
+    </div>
+
+    :::info
+    When asked for OpenAI key/endpoint just type anything (like _*_ for key/deployment name and https://nothing for endpoint) to proceed. 
+    :::
+
+    At this point, the playground should run and you should get the message _"Hi there! I'm an agent to chat with you."_. 
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={M365AgentsPlayground}/>
+    </div>
+</TabItem>
+</Tabs>
+
+### Update the code to consume agent from Foundry
+
+At this point, our bot is not functional yet as it does not do much. We need to update the code to consume our Microsoft Foundry agent using the Foundry SDK.
+Behind the scenes, AI Foundry Agent Service uses the OpenAI [Responses API](https://platform.openai.com/docs/api-reference/responses) to interact with the agent **even though the agent is not using an OpenAI model (e.g., DeepSeek models)**. This means you can use the same code/properties (except for some specificities) described in the OpenAI documentation but with the AI Foundry endpoints.
+
+<Tabs defaultValue="typescript" values={[
+{ label: 'TypeScript', value: 'typescript' },
+{ label: 'Python', value: 'python' },
+]}>
+<TabItem value="typescript">
+
+1. Replace the content of the `config.ts` file with the following:
+
+    ```typescript
+    const config = {
+        aiFoundryProjectEndpoint: process.env.ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT,
+        tenantId: process.env.ENV_AZURE_APP_TENANT_ID,
+        clientId: process.env.ENV_AZURE_APP_CLIENT_ID,
+        clientSecret: process.env.ENV_AZURE_APP_CLIENT_SECRET,
+        agentName: process.env.ENV_FOUNDRY_AGENT_NAME
+    };
+
+    export default config;
+    ```
+
+    These values will be read at runtime from the file `.localConfigs.playground`. You need to add the correct values in that file (with format VAR_NAME=&lt;value&gt;) as described in the table below:
+
+    :::note
+    You can also remove unused ones related to OpenAI.
+    :::
+
+    | Variable | Description | Value |
+    |----------|-------------|---------|
+    | **ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT** | Endpoint of your Microsoft Foundry project. This can be retrieved directly on the home page of the AI Foundry Project resource. | `https://cog-ai-<id>.services.ai.azure.com/api/projects/project-ai-<id>` |
+    | **ENV_AZURE_APP_TENANT_ID** | Azure tenant ID used to connect to AI Foundry. | `<your-tenant-id>` |
+    | **ENV_AZURE_APP_CLIENT_ID** | Client ID of the Entra ID application used to connect to AI Foundry. | `<your-client-id>` |
+    | **ENV_AZURE_APP_CLIENT_SECRET** | Client secret of the Entra ID application used to connect to AI Foundry. | `<your-client-secret-from-secure-store>` |
+    | **ENV_FOUNDRY_AGENT_NAME** | Name of the agent previously created in Microsoft Foundry. | `ai-knowledge-agent` |
+
+1. Replace the code in the `agent.ts` file with the following content:
+
+    ```typescript
+    import { AgentApplication, Storage, TurnContext, TurnState } from "@microsoft/agents-hosting";
+    import { ClientSecretCredential, TokenCredential } from "@azure/identity";
+    import { ActivityTypes } from "@microsoft/agents-activity";
+    import { AIProjectClient } from "@azure/ai-projects";
+    import config from "./config";
+
+    export class CustomAgent extends AgentApplication<TurnState> {
+
+        constructor (storage: Storage) {
+            super({
+                storage: storage
+            });
+
+            this._onMessage = this._onMessage.bind(this);
+
+            this.onActivity(ActivityTypes.Message, this._onMessage);
+        }
+    
+        private async _onMessage(context: TurnContext, state: TurnState) {   
+
+            // Non streaming mode
+            await this.invokeAgent(context);
+        }
+
+        private async invokeAgent(context: TurnContext) {
+            const foundryProject = new AIProjectClient(config.aiFoundryProjectEndpoint!, this.getCredential());
+
+            const items: any[] = [{
+                type: "message",
+                role: "user",
+                content: context.activity.text
+            }];
+
+            const client = await foundryProject.getOpenAIClient();
+            const conversation = await client.conversations.create({
+                items,
+                agent_reference:{ 
+                    type: "agent_reference",
+                    name: config.agentName 
+                } 
+
+            } as any);
+
+            const response = await client.responses.create(
+                {
+                    input: context.activity.text,
+                    conversation: conversation.id,
+                    agent_reference:{ 
+                        type: "agent_reference",
+                        name: config.agentName 
+                    }
+                }  as any
+            );
+
+            const lastOutput = response.output[response.output.length - 1] as { content?: Array<{ text?: string }> };
+            await context.sendActivity(lastOutput.content?.[0]?.text ?? "");
+        }
+
+        public getCredential(): TokenCredential {
+
+            return new ClientSecretCredential(
+                config.tenantId!,
+                config.clientId!,
+                config.clientSecret!
+            );
+        }
+    }
+    ```
+
+    In this code, we simply implement a new custom agent class `CustomAgent` as middleware between Microsoft 365 channels and the agent in Foundry. The `_onMessage` method will be called every time a user chats with the bot through configured channels (e.g., Teams or Copilot). We simply forward the user message to the Microsoft Foundry agent using the Azure Foundry SDK and OpenAI Responses API and return the response to the user via the original channel using the `context.sendActivity()` method.
+
+    :::note
+    For this example, the response is just the last message in the response output array. 
+    :::
+
+    :::tip
+    The Azure Foundry SDK is not mandatory to interact with the agent. You can always use the Foundry [raw REST API](https://learn.microsoft.com/en-us/azure/ai-foundry/reference/foundry-project-rest-preview?view=foundry#create-conversation) if the SDK is missing some latest capabilities. 
+    :::
+
+1. Finally, update the `index.ts` file to use our custom agent class:
+
+    ```typescript
+    import { startServer } from "@microsoft/agents-hosting-express";
+    import { CustomAgent } from "./agent";
+    import { MemoryStorage } from "@microsoft/agents-hosting";
+
+    const storage = new MemoryStorage();
+    const customAgent = new CustomAgent(storage);
+
+    startServer(customAgent);
+    ```
+
+1. Now, asking a question to the agent in the playground (ex: _"How to build a neural network?"_) should return the expected response based on the indexed data in Azure AI Search via the Microsoft Foundry agent:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[80%]" src={M365PlaygroundTest}/> 
+    </div>
+
+</TabItem> 
+
+<TabItem value="python">
+
+1. Install the `truststore` package using the following command. **This is strongly recommended to avoid SSL errors in network-restricted enterprise environments (more about the issue [here](https://stackoverflow.com/questions/79419186/apiconnectionerror-when-trying-to-use-openai-api))**:
+
+    ```bash
+    pip install truststore
+    ```
+
+1. From the root project folder, update the `.env` file with the following content:
+
+    ```plaintext
+    AZURE_OPENAI_DEPLOYMENT_NAME=gpt4.1-nano
+    ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT=https://cog-ai-<id>.services.ai.azure.com/api/projects/project-ai-<id>
+    ENV_AZURE_APP_TENANT_ID=<your-tenant-id>
+    ENV_AZURE_APP_CLIENT_ID=<your-client-id>
+    ENV_AZURE_APP_CLIENT_SECRET=<your-client-secret-from-secure-store>
+    ENV_FOUNDRY_AGENT_NAME=ai-knowledge-agent
+    ENV_FOUNDRY_AGENT_MODEL=gpt-4.1-nano
+    ```
+
+    Where you need to replace the values with the correct ones as described in the table below:
+
+    | Variable | Description | Value |
+    |----------|-------------|---------|
+    | **ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT** | Endpoint of your Microsoft Foundry project. This can be retrieved directly from the home page of the AI Foundry Project resource. | `https://cog-ai-<id>.services.ai.azure.com/api/projects/project-ai-<id>` |
+    | **ENV_AZURE_APP_TENANT_ID** | Azure tenant ID used to connect to AI Foundry. | `<your-tenant-id>` |
+    | **ENV_AZURE_APP_CLIENT_ID** | Client ID of the Entra ID application used to connect to AI Foundry. | `<your-client-id>` |
+    | **ENV_AZURE_APP_CLIENT_SECRET** | Client secret of the Entra ID application used to connect to AI Foundry. | `<your-client-secret-from-secure-store>` |
+    | **ENV_FOUNDRY_AGENT_NAME** | Name of the agent previously created in Microsoft Foundry. | `ai-knowledge-agent` |
+    | **ENV_FOUNDRY_AGENT_MODEL** | Model deployment used by the agent when calling the OpenAI Responses API. | `gpt-4.1-nano` |
+
+1. The scaffolded project already ships with a `config.py` file in the `src` folder exposing a `Config` class. Add the Microsoft Foundry settings to it so they are read from the environment at runtime:
+
+    ```python title="src/config.py"
+    import os
+
+    class Config:
+        """Agent Configuration"""
+
+        def __init__(self, env):
+            self.PORT = 3978
+            self.azure_openai_api_key = env["AZURE_OPENAI_API_KEY"]
+            self.azure_openai_deployment_name = env["AZURE_OPENAI_DEPLOYMENT_NAME"]
+            self.azure_openai_endpoint = env["AZURE_OPENAI_ENDPOINT"]
+
+            # Microsoft Foundry settings
+            self.ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT = env.get("ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT")
+            self.ENV_AZURE_APP_TENANT_ID = env.get("ENV_AZURE_APP_TENANT_ID")
+            self.ENV_AZURE_APP_CLIENT_ID = env.get("ENV_AZURE_APP_CLIENT_ID")
+            self.ENV_AZURE_APP_CLIENT_SECRET = env.get("ENV_AZURE_APP_CLIENT_SECRET")
+            self.ENV_FOUNDRY_AGENT_NAME = env.get("ENV_FOUNDRY_AGENT_NAME")
+            self.ENV_FOUNDRY_AGENT_MODEL = env.get("ENV_FOUNDRY_AGENT_MODEL", "gpt-4.1-nano")
+    ```
+
+1. Replace the content of the `agent.py` file (in the `src` folder) with the following. This is where the message handlers live with the new Microsoft 365 Agents SDK — they are registered against the `agent_app` instance using decorators rather than a subclass:
+
+    ```python title="src/agent.py"
+    import os
+    import sys
+    import traceback
+
+    import truststore
+    truststore.inject_into_ssl()
+
+    from dotenv import load_dotenv
+
+    from microsoft_agents.hosting.core import (
+        AgentApplication,
+        TurnState,
+        TurnContext,
+        MemoryStorage,
+    )
+    from microsoft_agents.activity import (
+        load_configuration_from_env,
+        ActivityTypes,
+    )
+    from microsoft_agents.hosting.aiohttp import CloudAdapter
+    from microsoft_agents.authentication.msal import MsalConnectionManager
+
+    from azure.identity import ClientSecretCredential
+    from azure.ai.projects import AIProjectClient
+
+    from config import Config
+
+    load_dotenv()
+
+    # Load configuration
+    config = Config(os.environ)
+    agents_sdk_config = load_configuration_from_env(os.environ)
+
+    # Authenticate against the Microsoft Foundry project
+    credential = ClientSecretCredential(
+        tenant_id=config.ENV_AZURE_APP_TENANT_ID,
+        client_id=config.ENV_AZURE_APP_CLIENT_ID,
+        client_secret=config.ENV_AZURE_APP_CLIENT_SECRET,
+    )
+
+    project_client = AIProjectClient(
+        endpoint=config.ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT,
+        credential=credential,
+    )
+
+    # Define storage and application
+    storage = MemoryStorage()
+    connection_manager = MsalConnectionManager(**agents_sdk_config)
+    adapter = CloudAdapter(connection_manager=connection_manager)
+
+    agent_app = AgentApplication[TurnState](
+        storage=storage,
+        adapter=adapter,
+        **agents_sdk_config,
+    )
+
+
+    async def invoke_agent(context: TurnContext) -> None:
+        try:
+            client = project_client.get_openai_client()
+
+            conversation = client.conversations.create(
+                items=[
+                    {
+                        "role": "user",
+                        "content": context.activity.text,
+                        "type": "message",
+                    }
+                ],
+                extra_body={"agent_reference": {"type": "agent_reference", "name": config.ENV_FOUNDRY_AGENT_NAME}},
+            )
+
+            response = client.responses.create(
+                model=config.ENV_FOUNDRY_AGENT_MODEL,
+                input=context.activity.text,
+                conversation=conversation.id,
+                extra_body={"agent_reference": {"type": "agent_reference", "name": config.ENV_FOUNDRY_AGENT_NAME}},
+            )
+
+            await context.send_activity(response.output[-1].content[0].text)
+
+        except Exception as e:
+            await context.send_activity(f"On message error. Details: {str(e)}")
+
+
+    @agent_app.activity(ActivityTypes.message)
+    async def on_message(context: TurnContext, state: TurnState):
+
+        # Non streaming mode
+        await invoke_agent(context)
+
+
+    @agent_app.error
+    async def on_error(context: TurnContext, error: Exception):
+        print(f"\n [on_turn_error] unhandled error: {error}", file=sys.stderr)
+        traceback.print_exc()
+        await context.send_activity("The agent encountered an error or bug.")
+    ```
+
+    In this code, the `on_message` handler (registered with the `@agent_app.activity(ActivityTypes.message)` decorator) acts as middleware between Microsoft 365 channels and the agent in Foundry. It is called every time a user chats with the bot through configured channels (e.g., Teams or Copilot). We simply forward the user message to the Microsoft Foundry agent using the Azure Foundry SDK and OpenAI Responses API and return the response to the user via the original channel using the `context.send_activity()` method.
+
+    :::note
+    - For this example, the response is just the last message in the response output array.
+    - The `app.py` file generated by the scaffold is the aiohttp server entry point. It imports `agent_app` and `connection_manager` from `agent.py` and does not need any change.
+    :::
+
+    :::tip
+    The Azure Foundry SDK is not mandatory to interact with the agent. You can always use the Foundry [raw REST API](https://learn.microsoft.com/en-us/azure/ai-foundry/reference/foundry-project-rest-preview?view=foundry#create-conversation) if the SDK is missing some latest capabilities. 
+    :::
+
+1. Now, asking a question to the agent in the playground (ex: _"How to build a neural network?"_) should return the expected response based on the indexed data in Azure AI Search via the Microsoft Foundry agent:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[80%]" src={M365PlaygroundTest}/> 
+    </div>
+
+</TabItem>
+</Tabs>
+
+### Stream response from the agent
+
+Now that we have basic input working, let's add streaming response capability to our agent to improve the user experience. The OpenAI Responses API supports streaming responses by setting the `stream` property to `true` when creating a response. We can leverage this capability to stream the response back to the user as it is being generated.
+
+<Tabs defaultValue="typescript" values={[
+{ label: 'TypeScript', value: 'typescript' },
+{ label: 'Python', value: 'python' },
+]}>
+<TabItem value="typescript">
+
+1. Create a new `invokeAgentWithStreaming` method and update the `_onMessage` method in the `agent.ts` to use it:
+
+    ```typescript title="Streaming response"
+
+    private async _onMessage(context: TurnContext, state: TurnState) {
+
+        // Non streaming mode
+        // await this.invokeAgent(context);
+
+        await this.invokeAgentWithStreaming(context);
+    }
+
+    private async invokeAgentWithStreaming(context: TurnContext) {
+
+        // Configure streaming response
+        await context.streamingResponse.setDelayInMs(100);
+        await context.streamingResponse.setGeneratedByAILabel(true);
+        await context.streamingResponse.setFeedbackLoop(true);
+        await context.streamingResponse.queueInformativeUpdate('Working on your answer...');
+
+        const foundryProject = new AIProjectClient(config.aiFoundryProjectEndpoint!, this.getCredential());
+
+        const items: any[] = [{
+            type: "message",
+            role: "user",
+            content: context.activity.text
+        }];
+
+        const client = await foundryProject.getOpenAIClient();
+        const conversation = await client.conversations.create({
+            items,
+            agent_reference:{ 
+                type: "agent_reference",
+                name: config.agentName 
+            } 
+
+        } as any);
+
+        // Streaming mode: process events and send to Teams
+        const responseStream = client.responses.stream(
+        {
+                input: context.activity.text,
+                conversation: conversation.id,
+                agent_reference:{ 
+                    type: "agent_reference",
+                    name: config.agentName 
+                }
+            }  as any
+        );
+
+        for await (const event of responseStream) {
+
+            if (event.type === "response.output_text.delta") {
+                if (event.delta && context) {
+                    await context.streamingResponse.queueTextChunk(event.delta);
+                }
+            } 
+            else if (event.type === "response.output_text.done") {
+                
+                if (event.text && context) {
+                await context.streamingResponse.queueTextChunk(event.text);
+                }
+
+            } 
+            else if (event.type === "response.completed") {
+                await context.streamingResponse.endStream();
+            }
+        }
+    }
+    ```
+
+    In this code, we combine the streaming capabilities of both the Microsoft 365 Agents SDK and the OpenAI Responses API (through the Foundry SDK `stream()` method). We configure the streaming response in the `context.streamingResponse` object and then process the events from the `responseStream` to send text chunks to the user as they are generated. You can use the `context.streamingResponse.setDelayInMs();` method to control the streaming pace as seen by the user.
+
+    Now asking the same question _"How to build a neural network?"_ should return a streamed response in the playground:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[80%]" src={StreamingResponsePlayground}/>
+    </div>
+
+    :::tip
+    Also notice the method `context.streamingResponse.setGeneratedByAILabel(true)` adding the _AI generated_ label on the message.
+    :::
+
+</TabItem> 
+
+<TabItem value="python">
+
+1. Create a new `invoke_agent_streaming` function and update the `on_message` handler in `agent.py` to use it:
+
+    ```python title="src/agent.py"
+    import asyncio
+
+    ...
+
+    @agent_app.activity(ActivityTypes.message)
+    async def on_message(context: TurnContext, state: TurnState):
+
+        # Non streaming mode
+        # await invoke_agent(context)
+
+        # Streaming mode
+        await invoke_agent_streaming(context)
+
+
+    async def invoke_agent_streaming(context: TurnContext) -> None:
+        try:
+
+            context.streaming_response.set_generated_by_ai_label(True)
+            await asyncio.sleep(0.1)
+
+            context.streaming_response.set_feedback_loop(True)
+            await asyncio.sleep(0.1)
+
+            context.streaming_response.queue_informative_update("Working on your answer...")
+            await asyncio.sleep(0.1)
+
+            client = project_client.get_openai_client()
+
+            conversation = client.conversations.create(
+                items=[
+                    {
+                        "role": "user",
+                        "content": context.activity.text,
+                        "type": "message",
+                    }
+                ],
+                extra_body={"agent_reference": {"type": "agent_reference", "name": config.ENV_FOUNDRY_AGENT_NAME}},
+            )
+
+            with client.responses.stream(
+                model=config.ENV_FOUNDRY_AGENT_MODEL,
+                input=context.activity.text,
+                conversation=conversation.id,
+                extra_body={"agent_reference": {"type": "agent_reference", "name": config.ENV_FOUNDRY_AGENT_NAME}},
+            ) as stream:
+
+                for event in stream:
+                    event_type = getattr(event, "type", "")
+                    if event_type == "response.output_text.delta":
+                        delta = getattr(event, "delta", "")
+                        if delta:
+                            context.streaming_response.queue_text_chunk(delta)
+                            await asyncio.sleep(0.05)
+
+                    elif event_type == "response.completed":
+                        await context.streaming_response.end_stream()
+
+        except Exception as e:
+            await context.send_activity(f"On message error. Details: {str(e)}")
+    ```
+
+    In this code, we combine the streaming capabilities of both the Microsoft 365 Agents SDK and the OpenAI Responses API (through the Foundry SDK `stream()` method). We configure the streaming response on the `context.streaming_response` object and then process the events from the `stream` to send text chunks to the user as they are generated. The short `await asyncio.sleep(...)` calls yield control back to the event loop so the SDK can flush the queued chunks progressively, giving the user a smooth streaming experience.
+
+    Now asking the same question _"How to build a neural network?"_ should return a streamed response in the playground:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[80%]" src={StreamingResponsePlayground}/>
+    </div>
+
+    :::tip
+    Also notice the method `context.streaming_response.set_generated_by_ai_label(True)` adding the _AI generated_ label on the message.
+    :::
+
+</TabItem>
+</Tabs>
+
+### Handle user feedback
+
+To directly gather user feedback on the agent responses, we can leverage the feedback loop capabilities of the Microsoft 365 Agents SDK. This allows users to provide feedback on the quality of the responses they receive from the agent. Then it is up to you to process and store this feedback for further analysis (not covered in the workshop).
+
+<Tabs defaultValue="typescript" values={[
+{ label: 'TypeScript', value: 'typescript' },
+{ label: 'Python', value: 'python' },
+]}>
+<TabItem value="typescript">
+
+1. Add the following line in the `_onMessage` method before starting the streaming process:
+
+    ```typescript
+    await context.streamingResponse.setFeedbackLoop(true);
+    ```
+
+1. Then, implement the activity method to handle feedback event in the `CustomAgent` class:
+
+    ```typescript
+    constructor (storage: Storage) {
+        ...
+        this._onInvoke = this._onInvoke.bind(this);
+        this.onActivity(ActivityTypes.Invoke, this._onInvoke);
+    }
+
+    ...
+    
+    private async _onInvoke(context: TurnContext): Promise<any> {
+
+        const invokeResponse = Activity.fromObject({ type: ActivityTypes.InvokeResponse, value: { status: StatusCodes.OK}});
+
+        switch (context.activity.name) {
+            case "message/submitAction":
+
+                const { actionName, actionValue } = context.activity.value as any;
+                if (actionName === "feedback") {
+                    await context.sendActivity(`Your feedback is ${actionValue.feedback}.`);
+                }
+                await context.sendActivity(invokeResponse);
+                
+            default:      
+                await context.sendActivity(invokeResponse);
+        }
+    };
+    ```
+    
+    This code adds thumb up/down buttons at the bottom of the agent message, allowing users to provide feedback via a dedicated text input. The `_onInvoke` method processes the feedback event and sends a confirmation message back to the user as an example. In a real-world scenario, you would store and process this data elsewhere for further analysis, for instance, to perform sentiment analysis with another LLM (not covered in the workshop).
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[80%]" src={FeedbackInputPlayground}/>
+    </div>
+    
+</TabItem>
+<TabItem value="python">
+
+1. The `invoke_agent_streaming` function already enables the feedback loop before starting the streaming process. Make sure the following line is present:
+
+    ```python
+    context.streaming_response.set_feedback_loop(True)
+    ```
+
+1. Then, register a new handler for the `invoke` activity in `agent.py` to process the feedback event:
+
+    ```python title="src/agent.py"
+    from http import HTTPStatus
+
+    from microsoft_agents.activity import (
+        load_configuration_from_env,
+        Activity,
+        ActivityTypes,
+    )
+
+    ...
+
+    @agent_app.activity(ActivityTypes.invoke)
+    async def on_invoke(context: TurnContext, state: TurnState):
+
+        invoke_response = Activity(
+            type=ActivityTypes.invoke_response,
+            value={"status": HTTPStatus.OK},
+        )
+
+        if context.activity.name == "message/submitAction":
+            action_value = context.activity.value
+            action_name = action_value.get("actionName")
+
+            if action_name == "feedback":
+                feedback = action_value.get("actionValue", {}).get("feedback")
+                await context.send_activity(f"Your feedback is {feedback}.")
+
+            await context.send_activity(invoke_response)
+        else:
+            await context.send_activity(invoke_response)
+    ```
+    
+    This code adds thumb up/down buttons at the bottom of the agent message, allowing users to provide feedback via a dedicated text input. The `on_invoke` handler processes the feedback event and sends a confirmation message back to the user as an example. In a real-world scenario, you would store and process this data elsewhere for further analysis, for instance, to perform sentiment analysis with another LLM (not covered in the workshop).
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[80%]" src={FeedbackInputPlayground}/>
+    </div>
+
+
+</TabItem>
+</Tabs>
+
+:::warning
+- The feedback experience is only available on Teams channel at the moment (not on Copilot).
+- Microsoft 365 Agents SDK feedback feature is different from LLM "Human in-the-loop" capability.
+:::
+
+### Test the agent in Teams and Copilot
+
+Now that we have a functional agent working locally in the playground, we can test it in Teams and Copilot channels.
+
+<Tabs defaultValue="typescript" values={[
+{ label: 'TypeScript', value: 'typescript' },
+{ label: 'Python', value: 'python' },
+]}>
+<TabItem value="typescript">
+
+- Unlike the playground application, environment variables are managed in a different file when debugging in Teams or Copilot. Open the file `.localConfigs` from the root folder and copy the same variables as before with the same values from `.localConfigs.playground`.
+
+    - `ENV_FOUNDRY_AGENT_NAME`
+    - `ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT`
+    - `ENV_AZURE_APP_TENANT_ID`
+    - `ENV_AZURE_APP_CLIENT_ID`
+    - `ENV_AZURE_APP_CLIENT_SECRET`
+
+</TabItem>
+<TabItem value="python">
+
+- Good news: with the new scaffold there is nothing extra to wire up. The bot authentication against Microsoft 365 channels is already configured in `agent.py` through the `MsalConnectionManager` (built from `load_configuration_from_env`), and the Microsoft 365 Agents Toolkit automatically writes the bot registration settings (`CONNECTIONS__SERVICE_CONNECTION__SETTINGS__*`) into the root `.env` file when it provisions the local debug resources.
+
+- The Microsoft Foundry variables (`ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT`, `ENV_AZURE_APP_TENANT_ID`, `ENV_AZURE_APP_CLIENT_ID`, `ENV_AZURE_APP_CLIENT_SECRET` and `ENV_FOUNDRY_AGENT_NAME`) you added earlier to the `.env` file are reused as-is. The same `agent.py` therefore works in the playground, Teams and Copilot without any change.
+
+    :::tip
+    If your application crashes during debugging, you can restart only the Python process (without relaunching the debugger from VS Code) by running the following command from the `src` folder:
+    ```powershell
+    python.exe -m jurigged -w app.py app.py
+    ```
+    This requires the `jurigged` package (`pip install jurigged`).
+    :::
+
+</TabItem>
+</Tabs>
+
+-  From Visual Studio Code, select the `Debug in Teams (Edge)` debug configuration and press **F5** to run the local debugger:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={DebugInTeams}/>
+    </div>
+
+    This will register a new bot instance in the [Bot Framework developer portal](https://dev.botframework.com/bots), start a local server, and expose it externally using Microsoft [DevTunnels](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/overview). Connect with your development Microsoft 365 account to see your bot registration. In the _Settings_, you can see the URL generated that loops back to your local machine:
+
+    <div className="flex justify-center items-center space-x-2 mb-10">
+        <img className="w-[50%]" src={BotDevPortal}/>
+        <img className="w-[50%]" src={BotFrameworkPortalMessagingEndpoint}/>      
+    </div>    
+ 
+    :::info
+    - The Bot Framework developer portal is a portal where you can manage your bot registrations, channels, and settings during the development phase. It is a lighter version of the Azure Bot Service. **You should never use it for production bots.**
+    - The URL generated through DevTunnels is temporary and will change at every new debug session. For production bots, you should host your bot in Azure App service.
+    :::
+
+- Log in to the Teams web version with your development account.
+
+- Go to _Apps_→_Manage your apps_→_Upload an app_→_Upload a customized app_. From the source code folder of your project, select the file `\apps\AIWorkshopAgentDev<your-name>\appPackage\build\appPackage.local.zip` to upload the bot to Teams.
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={TeamsUploadApp}/>
+    </div>  
+
+    :::info
+    This deployment method is called "Teams side-loading" and covers both Copilot and Teams channel experiences. Also, you don't need to reinstall the app at every debug session even if the bot endpoint changes. The Teams app will automatically connect to the new endpoint as long as the bot registration remains the same.
+    :::
+
+- Add the app and select the "Teams" experience:
+
+    <div className="flex justify-center items-center space-x-2 mb-10">
+        <img className="w-[50%]" src={TeamsAddApp}/>
+        <img className="w-[30%]" src={ChannelExperienceSelection}/>
+    </div>
+
+- You can now chat with the agent in Teams by asking the same question as before _"How to build a neural network?"_:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[80%]" src={TeamsStreamingExperience}/>
+    </div>  
+
+    :::tip
+    You can put breakpoints in Visual Studio Code to debug the bot code while interacting with it in Teams.
+    :::
+
+- To test the agent in Copilot, go to the Copilot pane from the Teams client. You should see your agent in the list of available agents. Select it and ask the same question as before to see the response from the agent:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[80%]" src={CopilotStreamingExperience}/>
+    </div>
+
+    :::tip 
+    You may have noticed the thumb up/down feedback buttons in the Copilot chat. These are not for gathering custom feedback from users but for giving feedback to Microsoft directly. You cannot customize this experience at this time.
+    ::: 
+
+## Module wrap-up
+
+In this module, you successfully exposed your Microsoft Foundry agent to Microsoft 365 channels, making it accessible to end users through Teams and Copilot. Here's what you accomplished:
+
+**Agent Application Development**
+- Created a custom agent application using the Microsoft 365 Agents SDK with TypeScript/Node.js and Python
+- Configured the development environment with proper dependencies for Microsoft Foundry and Microsoft 365 integration
+- Set up environment variables to connect to Microsoft Foundry projects and authenticate with Entra ID
+
+**Microsoft Foundry Integration**
+- Integrated the Microsoft Foundry SDK to communicate with your deployed agent
+- Leveraged the OpenAI Responses API through Azure Agent Service to interact with agents regardless of the underlying LLM model
+- Implemented a middleware pattern to forward user messages from Microsoft 365 channels to the Foundry agent and return responses
+
+**Streaming Response Implementation**
+- Enhanced the user experience by implementing streaming responses using both Microsoft 365 Agents SDK and OpenAI Responses API
+- Configured streaming parameters including delay timing, AI-generated labels, and informative updates
+- Processed real-time event streams to deliver text chunks to users as they are generated by the agent
+
+**User Feedback Mechanism**
+- Implemented a custom feedback loop allowing users to provide thumbs up/down feedback on agent responses
+- Created event handlers to capture and process user feedback through the Microsoft 365 Agents SDK
+- Built a foundation for collecting user sentiment data for future analysis and agent improvement
+
+**Multi-Channel Deployment & Testing**
+- Successfully deployed and tested the agent locally using the Microsoft 365 Agents Playground
+- Registered the bot in the Bot Framework developer portal for development purposes
+- Enabled DevTunnels to expose the local development server for external access
+- Side-loaded the agent to Microsoft Teams using custom app packages
+- Tested the agent across multiple channels: Playground, Teams, and Copilot
+- Debugged the agent code in real time while interacting through Teams
+
+Your agent is now accessible to users through familiar Microsoft 365 interfaces, providing a seamless experience for querying your indexed knowledge base. In the next module, we'll add authentication to use the Microsoft Graph API on behalf of the currently connected user.
+
+<div className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="text-2xl font-bold mb-3">Ready to continue?</div>
+    <a href="../modules/module5" className="inline-block px-8 py-3 bg-white text-fuchsia-600 font-bold rounded-xl hover:bg-gray-100 transition-all duration-300 hover:scale-105 shadow-lg no-underline hover:no-underline">
+        <div>Go to Module 5 →</div>
+    </a>
+</div>

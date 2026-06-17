@@ -1,0 +1,15 @@
+# Copy this file to ".localConfigs" and fill in your own values.
+# Do NOT commit the real ".localConfigs" file — it is ignored by git.
+
+ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT=
+ENV_AZURE_APP_TENANT_ID=
+ENV_AZURE_APP_CLIENT_ID=
+ENV_AZURE_APP_CLIENT_SECRET=
+ENV_FOUNDRY_AGENT_NAME=ai-knowledge-agent
+clientId=
+clientSecret=
+tenantId=
+graph_connectionName=copilotCustomAuth
+AZURE_OPENAI_API_KEY=
+AZURE_OPENAI_ENDPOINT=
+AZURE_OPENAI_DEPLOYMENT_NAME=

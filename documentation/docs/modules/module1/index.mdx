@@ -1,0 +1,184 @@
+import Architecture from './img/architecture.png';
+import useBaseUrl from '@docusaurus/useBaseUrl';
+import AIFoundryAgentService from './img/ai_foundry_agent_service.png';
+
+# Module 1: Introduction - Solution overview, architecture and planning
+
+This foundational module establishes the context and key concepts for the RAG-based AI agent solution you'll build throughout this workshop.
+
+<div id="sticky-banner" className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="flex items-center justify-center mx-auto">
+        <div className="flex items-center">
+            <div className="inline-flex items-center justify-center w-9 h-9 mr-2 bg-white rounded-full">
+                <span>⏰</span>
+            </div>
+            <div className="text-2xl font-bold">Estimated time: 30 minutes</div>
+        </div>
+    </div>
+</div>
+<br></br>
+
+**Learning Objectives**
+
+By completing this module, you will:
+- Gain a comprehensive understanding of the solution architecture and its key components
+- Learn about technical constraints and compliance requirements common in enterprise environments
+- Explore the various data sources available for AI agents and understand best practices for selecting the appropriate source for your use case
+
+## Workshop use case
+
+In this workshop, you'll build an AI agent that answers questions about AI-related topics using a Retrieval-Augmented Generation (RAG) pattern. The agent will retrieve information from two sources: a sample dataset of Medium articles ([https://www.kaggle.com/datasets/hsankesara/medium-articles](https://www.kaggle.com/datasets/hsankesara/medium-articles)) stored in a SQL database and documents stored in SharePoint.
+
+## Architecture
+
+The final architecture of the solution we want to achieve is as follows:
+
+<div className="flex justify-center">
+    <img className="w-[100%]" src={Architecture}/>
+</div>
+
+## Building blocks
+
+| Technology/Resource | Description |
+|---------------------|-------------|
+| **Teams/Copilot** | The front end interface where users interact with the AI agent. This can be accessed through Microsoft Teams channels or Copilot in Office applications, providing a familiar user experience. |
+| **Azure Bot Service** | Acts as the intermediary between channels (Teams/Copilot) and the backend services (the agent logic), handling user requests and responses. It manages authentication, message routing, and conversation state. |
+| **Microsoft Foundry & Agent Service** | The core orchestration platform where the AI agent is implemented. It manages interactions between user inputs, LLMs, and data sources, coordinating the RAG workflow and response generation. |
+| **Azure AI Search** | Provides the retrieval capabilities for the RAG pattern, enabling the agent to fetch relevant documents or data based on user queries. Includes vector search capabilities for semantic matching and custom chunking strategies. |
+| **Azure SQL Database** | Stores the structured data that the AI agent can query and use to generate responses. Provides relational data storage for business data, metadata, and application state management. |
+| **Microsoft 365 Copilot Connectors** | Enable secure access to Microsoft 365 data through the Copilot Retrieval API, allowing the agent to leverage organizational knowledge stored in Microsoft 365 (SharePoint, OneDrive, etc.) while respecting user permissions and compliance policies. |
+
+## Technical considerations
+
+### What are the specificities of enterprise environments?
+
+Before making your solution available to users, it is essential to understand the limitations and constraints of your technical environment. These considerations must be taken into account **during the architecture phase**, well before any implementation work begins.
+
+<div className='flex items-center space-x-2'><img className="w-[18px]" src={useBaseUrl('/img/azure_logo.svg')} /> **On the Azure side**</div>
+
+In many enterprise environments, any solution relying on Azure backend services **must be isolated from the public network**, meaning no public access is allowed. This strict constraint requires additional configuration on both networking and platform sides to ensure proper connectivity and can have significant impacts on the architecture.
+
+Most organizations provide an internal cloud governance platform to handle these configurations. This type of platform allows technical teams to provision and manage environments and resources across cloud providers (Azure, AWS, GCP) with less dependency on centralized cloud operations teams. Leveraging it accelerates development and helps keep solutions compliant.
+
+To get started, you'll typically need project identifiers and service onboarding prerequisites defined by your organization. From there, you can provision your own resources either programmatically using Infrastructure as Code (Bicep/Terraform - recommended) or manually through a portal, using separate environments for each stage of your development lifecycle.
+
+The networking configuration can often be done directly through a UI, enabling predefined VNet peering with your internal network with minimal additional configuration.
+
+:::info Deploy early!
+As a best practice, solutions should be deployed as early as possible in the development lifecycle to identify and prevent any configuration and availability issues.
+:::
+
+In summary, when designing the architecture for your solution, you need to:
+
+- **Verify AI model availability** in your target region (e.g., some models are not available in Canada Central). Depending on the nature of your project, data residency requirements may also apply. For instance, review model availability using the [Agent Service in AI Foundry](https://learn.microsoft.com/en-us/azure/ai-foundry/agents/concepts/model-region-support?view=foundry&tabs=global-standard#azure-openai-models).
+- **Confirm Azure resource availability** for your cloud platform and target region using your organization's official service catalog.
+- **Choose your LLM models wisely**. Most of the time, your agent(s) won't require the latest and most advanced LLM models available on the market (it doesn't take GPT-5 to perform a text summary). Instead, you'll need to balance several factors to select the most suitable model for your use case. It's better to start with more cost-effective models and upgrade only if necessary based on performance outcomes and cost considerations. Microsoft Foundry allows you to do this in minutes, even enabling side-by-side model comparisons.
+
+<div className='flex items-center space-x-2'><img className="w-[18px]" src={useBaseUrl('/img/m365_logo.svg')} /> **On the Microsoft 365 side**</div>
+
+Since Microsoft 365 is a globally distributed service, development teams often have limited or no administrative access to production tenant configuration. This means you may need admin support when deploying applications such as Teams packages. Because deployments are frequent during development, a dedicated development tenant is typically used so members can deploy and test solutions without requiring approval for every change.
+
+:::info
+While you could technically deploy Azure backend services in one environment and use a different tenant for Microsoft 365 during development, this is **not recommended**. It is preferable to align both Azure and Microsoft 365 deployments within the same development environment before moving to production.
+:::
+
+Here is an overview of a common Microsoft 365 solution lifecycle:
+
+<div className="flex justify-center">
+    <img className="w-[60%]" src={Architecture}/>
+</div>
+
+### Why use Microsoft 365 indexed data instead of a custom storage solution?
+
+When your agents require data stored in Microsoft 365 (e.g., SharePoint documents), Copilot Connectors should be your preferred knowledge source instead of a custom storage solution. For instance, using the [Copilot Retrieval API](https://learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/api/ai-services/retrieval/overview), you can access the [Microsoft 365 semantic index](https://learn.microsoft.com/en-us/microsoftsearch/semantic-index-for-copilot) and retrieve content directly from it. The downside of this approach is that you don't control the index itself or how embeddings and chunks are generated. Instead, you rely on Microsoft 365 services to handle data retrieval and indexing. 
+
+**Benefits**
+
+✅ **Compliance and security**: By using Microsoft 365 Copilot Connectors, you leverage the built-in security and compliance features of Microsoft 365 (e.g., permissions and sensitivity labels), ensuring that data access adheres to organizational policies. 
+
+✅ **Cost savings**: In many organizations, existing Copilot licenses already enable Microsoft 365 semantic index capabilities behind the scenes.
+
+✅ **Data is usable** in both custom engine agents (through the Copilot Retrieval API) and Copilot Studio/Agent Builder agents (via built-in integration). Connectors can be reused across multiple solutions of different types.
+
+✅ **Maintenance and scalability**: Relying on Microsoft 365 services reduces the maintenance overhead associated with managing custom storage solutions. Microsoft handles scaling, updates, and optimizations for you.
+
+✅ **Custom connector creation**: You can create your own custom connectors directly using the Graph API REST endpoint or the [C# SDK](https://learn.microsoft.com/en-us/graph/custom-connector-sdk-overview). For example, connectors can be built to ingest knowledge from internal portals or third-party content systems.
+
+    :::info Available connectors
+    Refer to your internal Microsoft 365/Copilot connector catalog to see the list of connectors available in your tenant.
+    :::
+
+**Downsides**
+
+❌ As a developer, you don't have any control over the indexing process, such as chunking strategy or the embeddings model used. This process is also completely opaque and undocumented. However, you can still create your own property mappings to control how metadata is stored and retrieved.
+
+:::danger Indexing Microsoft 365 data in a custom storage solution
+Indexing Microsoft 365 data in a custom solution like blob storage or Azure Search may be tempting to have total control over the process, especially for SharePoint or OneDrive content. However, this approach requires a significant amount of work and considerations to respect compliance and security (i.e., permissions). In such cases, you need to ensure:
+- Users can only see what they have access to in the original source. If the storage system doesn't include a built-in permissions mechanism (like Azure AI Search), you need to implement it yourself, which basically means reinventing the wheel.
+- All permissions and document lifecycles remain in sync with Microsoft 365 at all times (documents added, modified, moved, or deleted).
+- Data is stored according to organizational policies and data residency requirements.
+
+Some tools like Azure AI Search offer built-in integration for SharePoint, but with [many limitations](https://learn.microsoft.com/en-us/azure/search/search-how-to-index-sharepoint-online#limitations-and-considerations). **This option should be reserved for very specific use cases when you need to control exactly how data is indexed and retrieved (which is rarely the case).** Even when considering this option, Microsoft still recommends using the Microsoft 365 Copilot Retrieval API.
+
+**Avoiding these constraints may lead to serious security issues**.
+
+If the data does not require any permissions support or compliance considerations, then using a custom storage solution like Azure AI Search is perfectly acceptable.
+:::
+
+### Why use AI Foundry Agent Service?
+
+AI Foundry is an aggregator for all Microsoft AI-based services, including models and more. The [Agent Service](https://learn.microsoft.com/en-us/azure/ai-foundry/agents/overview?view=foundry&preserve-view=true) is a managed service on top of AI Foundry that simplifies the creation, deployment, and management of AI agents. It provides built-in capabilities for orchestrating interactions between LLMs, data sources, and user inputs, making it easier to implement complex RAG workflows without having to build everything from scratch.
+
+Agent Service is the preferred approach because it streamlines many aspects of agent development for common requirements, such as:
+- Agent configuration and deployment.
+- Standalone agents or multi-agent solutions via workflows.
+- Support for private networking scenarios to comply with enterprise environment constraints.
+- Fine-tuning capabilities for specific base models.
+- **Agent testability via built-in and customizable evaluation tools.**
+- Built-in guardrails.
+- Built-in memory management.
+- **Monitoring via built-in integration with Azure Monitor/Application Insights and OpenTelemetry.**
+
+<div className="flex justify-center">
+    <img className="w-[100%]" src={AIFoundryAgentService}/>
+</div>
+
+Because it is an Azure resource like any other, it also means all the infrastructure provisioning can be automated using Infrastructure as Code (IaC) tools like Bicep or Terraform, which is essential for maintaining consistency across different environments (development, testing, production) and adhering to platform engineering best practices. 
+
+:::info
+All these requirements could be met using other tools like LangChain or LangFuse, but would require much more boilerplate and custom development. Agent Service is one way to create agents, not the only way. In the end, it depends on the solution you need to build.
+:::
+
+Unlike low-code tools like Copilot declarative agents or Copilot Studio, AI Foundry Agent Service focuses on the backend side of things and does not come with any prebuilt UI (there is an option to publish to M365, but this is a basic integration). This means you'll need to implement your own front end, for instance using the Microsoft 365 Agents SDK to integrate with Teams or Copilot, or completely build your own custom UI. In both cases, you'll need to use the [REST API directly](https://learn.microsoft.com/en-us/azure/ai-foundry/reference/foundry-project-rest-preview?view=foundry#create-conversation) or use available [AI Foundry SDKs](https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/develop/sdk-overview?view=foundry-classic&pivots=programming-language-csharp) (Node.js, Python, etc.) to interact with your agent.
+
+
+### Why not just use Copilot Studio to build the agent? Would it be simpler?
+
+Copilot Studio is a low-code platform relying on the Power Platform behind the scenes. The tool is mainly designed for business users to create simple agents with minimal technical knowledge. These solutions have their own lifecycle, ecosystems/environments (monitoring), and supporting teams. While they can be used to build simple agents quickly or for prototyping purposes, they may not meet the requirements for more complex, scalable, and compliant solutions needed in enterprise contexts (e.g., complex VNet integration support, limited model selection, performance, traceability, etc.). 
+
+They also have their own licensing models with a subscription credit model or pay-as-you-go, making it complicated to estimate costs at the enterprise level when building multiple agents at scale (often more expensive than using AI Foundry directly and very dependent on the vendor).
+
+However, Copilot Studio can technically be used as a front end for agents built using AI Foundry Agent Service, providing a rich user interface and leveraging Copilot's capabilities while relying on the robust backend orchestration of AI Foundry.
+
+### Are you confused with all these available 'SDKs', 'Toolkits', and 'Studio' things? No worries, that's normal.
+
+Microsoft didn't do a great job at naming all their tools with very similar names, which makes it really confusing for developers getting started (even experienced ones actually). Here is a quick overview of the main tools you may encounter when building AI agents for Microsoft 365:
+
+- [Microsoft Agents Toolkit Visual Studio Code/Visual Studio extensions](https://learn.microsoft.com/en-us/microsoftteams/platform/toolkit/install-agents-toolkit?tabs=vscode): VS Code extension to build, debug, and deploy Microsoft 365 agents. Used to scaffold AI agent projects in JavaScript and .NET **only**. Formerly known as the Teams Toolkit.
+- [Microsoft Agents Toolkit CLI](https://www.npmjs.com/package/@microsoft/m365agentstoolkit-cli): command-line interface to build, debug, and deploy Microsoft 365 agents. Same as the extension but for CLI. Often used in CI/CD pipelines. Formerly known as the Teams Toolkit CLI.
+- [Microsoft 365 Agents SDK](https://learn.microsoft.com/en-us/microsoft-365/agents-sdk/): set of libraries to build agents integrated into the Microsoft 365 experience (Teams, Copilot, etc.). Formerly known as the Bot Framework SDK. The SDK is available in different languages (.NET, Node.js, Python).
+- [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/agent-framework-overview): SDK to build AI agents and multi-agent workflows for .NET and Python. Merge of the former Semantic Kernel and Autogen frameworks. Can be seen as the equivalent of the LangChain framework but for Microsoft technologies. Not related to Microsoft 365 directly.
+- [Microsoft 365 Copilot](https://www.microsoft.com/en-us/microsoft-365-copilot): AI assistant integrated into Microsoft 365 applications (Word, Excel, Teams, etc.). Has its own licensing model. You can extend its capabilities by creating Copilot declarative agents (i.e., like specialization of the 'general' Copilot) using pro-code (with Microsoft 365 Agents SDK) or low-code (Copilot Studio) tools. Copilot licenses in a tenant automatically enable the Copilot Retrieval API and Microsoft 365 semantic index capabilities. When using pro-code, this is exactly the same as creating a Teams bot, except the bot is surfaced in Copilot experiences with more or less the same capabilities.
+- [Copilot Studio](https://www.microsoft.com/en-us/microsoft-365-copilot/microsoft-copilot-studio): low-code platform to build Microsoft 365 declarative agents or custom agents using a visual interface. Built on top of the Power Platform. Formerly known as Power Virtual Agents. Meant for citizen developers, not professional developers.
+- [Copilot Connectors](https://learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/overview-copilot-connector): Formerly known as Microsoft Graph connectors, these are prebuilt or custom connectors to index data from various sources into the Microsoft 365 search indexes (lexical + semantic) for use with Copilot and the Copilot Retrieval/Search APIs.
+
+
+Now you have a good understanding of the architecture and key considerations for building RAG-based AI agents using AI Foundry and Microsoft 365. In the next module, we will dive into provisioning the necessary resources to get started with development.
+
+<div className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="text-2xl font-bold mb-3">Ready to continue?</div>
+    <a href="../modules/module2" className="inline-block px-8 py-3 bg-white text-fuchsia-600 font-bold rounded-xl hover:bg-gray-100 transition-all duration-300 hover:scale-105 shadow-lg no-underline hover:no-underline">
+        <div>Go to Module 2 →</div>
+    </a>
+</div>
+

@@ -1,0 +1,84 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ifm-color-primary: #20c997;
+  --ifm-color-primary-dark: #1ab589;
+  --ifm-color-primary-darker: #17a57d;
+  --ifm-color-primary-darkest: #11845f;
+  --ifm-color-primary-light: #41d3a8;
+  --ifm-color-primary-lighter: #72dfbf;
+  --ifm-color-primary-lightest: #b7f1dd;
+
+  --ifm-background-color: #f7f9fc;
+  --ifm-background-surface-color: #ffffff;
+  --ifm-font-color-base: #0f172a;
+  --ifm-font-color-secondary: #334155;
+  --ifm-heading-color: #050b1c;
+
+  --ifm-font-family-base: 'Chivo', 'Segoe UI', sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', 'Consolas', monospace;
+
+  --ifm-code-font-size: 95%;
+  --ifm-code-color: #e8eefc;
+  --ifm-code-background: #e8eefc;
+  --ifm-navbar-background-color: rgba(7, 12, 30, 0.9);
+  --ifm-navbar-link-color: #dce7ff;
+  --ifm-navbar-link-hover-color: #ffffff;
+  --ifm-navbar-shadow: none;
+
+  --ifm-footer-background-color: #070c1e;
+  --ifm-footer-color: #b6c2de;
+  --ifm-footer-link-color: #dce7ff;
+
+  --ifm-toc-border-color: #d6deef;
+  --ifm-table-border-color: #d6deef;
+  --ifm-hr-border-color: #d6deef;
+
+  --docusaurus-highlighted-code-line-bg: rgba(32, 201, 151, 0.18);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #41d3a8;
+  --ifm-color-primary-dark: #20c997;
+  --ifm-color-primary-darker: #1ab589;
+  --ifm-color-primary-darkest: #17a57d;
+  --ifm-color-primary-light: #72dfbf;
+  --ifm-color-primary-lighter: #97e8cf;
+  --ifm-color-primary-lightest: #ccf6e7;
+
+  --ifm-background-color: #050b1c;
+  --ifm-background-surface-color: #0b1634;
+  --ifm-font-color-base: #dce7ff;
+  --ifm-font-color-secondary: #b6c2de;
+  --ifm-heading-color: #f8fbff;
+
+  --ifm-navbar-background-color: rgba(5, 11, 28, 0.94);
+  --ifm-navbar-link-color: #dce7ff;
+  --ifm-navbar-link-hover-color: #ffffff;
+
+  --ifm-footer-background-color: #050b1c;
+  --ifm-footer-color: #b6c2de;
+  --ifm-footer-link-color: #f8fbff;
+
+  --ifm-code-color: #e9f1ff;
+  --ifm-code-background: #020612;
+  --ifm-toc-border-color: #223157;
+  --ifm-table-border-color: #223157;
+  --ifm-hr-border-color: #223157;
+
+  --docusaurus-highlighted-code-line-bg: rgba(65, 211, 168, 0.2);
+}
+
+p {
+  margin: 0;
+}

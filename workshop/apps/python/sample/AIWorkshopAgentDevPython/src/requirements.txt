@@ -1,0 +1,9 @@
+python-dotenv
+microsoft-agents-hosting-aiohttp
+microsoft-agents-authentication-msal
+truststore
+azure-core>=1.38.0
+azure-identity>=1.25.0
+azure-ai-projects>=2.2.0
+microsoft-agents-hosting-core>=0.7.0
+httpx

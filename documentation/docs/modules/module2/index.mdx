@@ -1,0 +1,571 @@
+---
+toc_max_heading_level: 4
+---
+import Architecture from './img/architecture_module2.png';
+import DeployStackDeployment from './img/deployment_stack.png';
+import ResourceGroup from './img/resource_group.png';
+import DeployingStack from './img/deploying_stack.png';
+import VsCodeSqlServer from './img/vscode_sqlserver_extension.png';
+import ArticlesTable from './img/articles_table.png';
+import SqlData from './img/sql_data.png';
+import FoundryProject from './img/foundry_project.png';
+import FoundryEmbeddingModel from './img/foundry_embedding_model.png';
+import SearchAddDataSource from './img/search_data_source.png';
+import SearchIndexFields from './img/index_base_fields.png';
+import SearchIndexVectorField from './img/index_vector_field.png';
+import SearchIndexChunkFields from './img/index_chunk_fields.png';
+import TextSplitSkillAdd from './img/text_split_skill_add.png';
+import UserAssignedResourceId from './img/user_assigned_managed_identity_res_id.png';
+import AzureOpenAIEmbeddingSkillAdd from './img/openai_embedding_skill_add.png';
+import SearchIndexerAdd from './img/search_indexer_add.png';
+import IndexerDocsCount from './img/indexer_docs_count.png';
+import IndexDocsCount from './img/index_docs_count.png';
+import AzureSearchResource from './img/azure_search_resource.png';
+import RemoveIdKey from './img/remove_id_key.png';
+
+# Module 2: Provisioning resources
+
+The Module 2 objective is to provision the necessary Azure resources required to build and deploy the RAG-based AI agent solution. This includes ingesting the data into a SQL database, indexing it in Azure AI Search, and using AI Foundry embedding models for vectorization.
+
+<div id="sticky-banner" className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="flex items-center justify-center mx-auto">
+        <div className="flex items-center">
+            <div className="inline-flex items-center justify-center w-9 h-9 mr-2 bg-white rounded-full">
+                <span>⏰</span>
+            </div>
+            <div className="text-2xl font-bold">Estimated time: 1 hour</div>
+        </div>
+    </div>
+</div>
+<br></br>
+**Learning Objectives**
+
+By completing this module, you will learn how to:
+- Provision and configure Azure infrastructure for RAG using Bicep templates and deployment stacks
+- Set up Azure AI Search with vector search capabilities for semantic document retrieval
+- Create an end-to-end indexing pipeline that chunks documents and generates embeddings
+- Configure skillsets to transform raw data into searchable, vectorized content for AI agents
+
+## Architecture
+
+The target architecture for this module is illustrated below:
+
+<div className="flex justify-center">
+    <img className="w-[60%]" src={Architecture}/>
+</div>
+
+## Implementation steps
+
+## Setup Azure environment
+
+We start by configuring our Azure environment to ensure we have the necessary permissions and resources to deploy the infrastructure for this workshop.
+
+1. Create a new service principal with owner permissions on your target Azure subscription and copy the app registration client ID and and generate a new secret. You'll also need to add the following API permissions :
+
+- `Directory.Read.All` (application permission) to allow it to read Entra ID group information during deployment.
+- `openid`, `profile`, `Sites.Read.All` and `ExternalItem.Read.All` (delegated permissions) to allow it to access SharePoint sites and external items.
+
+:::info
+For convenience, we use the same SPN for both Azure deployment and agent authentication. In production, they should be different.
+:::
+
+2. Create a new Entra ID **security** group that will be set as SQL Server administrators and add your user account to it. For example, you can create a group named `Workshop SQL Admins`.
+
+### Setup variables
+
+The very first step of the configuration is to set up your environment variables correctly. These variables are used for scripted deployment via the `variables.local.ps1` file. You need to update this file with your own values before running the deployment scripts. You can start from the `variables.local.example.ps1` and rename the file to `variables.local.ps1`.
+
+
+| Variable                                                   | Description                                                                                                                         | Example                             |
+|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------|
+| **ENV_DEVELOPER_NAME**                                     | Your name or unique identifier to distinguish resources deployed by different developers. This value is used to generate a unique resource ID prefix.                                           | `franck`                         |
+| **ENV_AZURE_DEPLOY_TENANT_ID**                             | The tenant ID of the Azure Active Directory where the service principal is registered.                                                      | `<your-tenant-id>`. **Only required if you choose to deploy via a service principal.** |
+| **ENV_AZURE_DEPLOY_APP_CLIENT_ID**                         | The client ID of the service principal deploying the infrastructure.                                                                           | `<your-client-id>`. **Only required if you choose to deploy via a service principal.**                 |
+| **ENV_AZURE_DEPLOY_APP_CLIENT_SECRET**                     | The client secret of the service principal deploying the infrastructure.                                                                        | `<your-secret>`. **Only required if you choose to deploy via a service principal.**                |
+| **ENV_AZURE_DEPLOYMENT_STACK_SQL_ADMINS_ENTRA_GROUP_NAME** | The name of the Entra ID group that will be set as SQL Server administrators (the one you created earlier). | `Workshop SQL Admins`                 |
+| **ENV_AZURE_DEPLOYMENT_STACK_SQL_ADMINS_ENTRA_GROUP_ID** | The ID of the Entra ID group that will be set as SQL Server administrators. You can find this information in the Azure portal by browsing to the group resource. | `<group-object-id>`                 |
+| **ENV_WEBAPP_STACK**                                       | The tech stack to use for the Azure Web App. Use **"python"** for Python and **"node"** for Node.js according to your choice. By default `"node"`. | `python`
+
+### Provision the SQL server and database
+
+For the purpose of this workshop, we use a sample dataset of Medium articles from this [source](https://www.kaggle.com/datasets/hsankesara/medium-articles). The data contains 337 articles in a CSV file with the following columns:
+
+| Column | Description |
+|--------|-------------|
+| **id** | Unique identifier for each article |
+| **author** | Name of the article author |
+| **claps** | Number of claps (likes) the article received on Medium |
+| **reading_time** | Estimated reading time in minutes |
+| **link** | URL link to the original Medium article |
+| **title** | Title of the article |
+| **text** | Full text content of the article |
+
+We start by creating the SQL server and database to store these articles. For this, we use Bicep templates and [Azure deployment stacks](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/deployment-stacks?tabs=azure-powershell) to automate the deployment.
+
+1. Go to the `/workshop` folder in the workshop repository.
+1. Open a new PowerShell Core terminal In Visual Studio Code.
+1. Run the following command to deploy the SQL server and database resources:
+
+```powershell title="Deploy SQL Server and Database"
+.\deploy-infra.ps1 -Module 'Module1' -Manual -Verbose
+```
+
+4. Go to [https://portal.azure.com/](https://portal.azure.com/) and navigate to your target subscription and then _Deployment stacks_. You should see the new stack deploying:
+
+<div className="flex justify-center">
+    <img className="w-[80%]" src={DeployingStack}/>
+</div>
+
+5. Once the deployment is complete, you should see the new _SQL server_ and _SQL database_ resources created in the resource group:
+
+<div className="flex justify-center mb-10">
+    <img className="w-[40%]" src={DeployStackDeployment}/>
+    <img className="w-[40%] m-5" src={ResourceGroup}/>
+</div>
+
+The deployment script also automatically creates a new table named `Articles` to store the data for the RAG agent. The schema is available in the file `/workshop/templates/sql_table.sql`.
+
+:::tip Designing SQL schema for vectorization
+When designing a SQL schema for RAG and semantic search, it's crucial to plan ahead for vectorization. Search indexes typically generate embeddings from a single column, meaning that if your relevant data is scattered across multiple columns (e.g., title, summary, tags, content), the search index would need to aggregate them before vectorization. 
+
+**Best practice**: Instead of handling this aggregation at the search index level, merge the data you want to use for semantic search directly in your SQL schema (or even directly in the CSV if you use that format). This can be done by:
+- Creating a computed column that concatenates relevant fields
+- Adding a dedicated column populated via triggers or stored procedures
+- Pre-processing data during insertion to combine searchable content
+
+This approach simplifies your search index configuration, improves performance by reducing processing overhead, and gives you better control over how content is structured for vectorization. For example, combining a document's title, summary, and key metadata into a single `searchable_content` column ensures the embedding model captures the complete context in one operation.
+:::
+
+6. In Visual Studio Code, open the **SQL Server** extension and add a new connection. **You must use your Entra ID account (for example, `your-user@your-tenant.onmicrosoft.com`) to access the database (SQL login is disabled)**.
+
+<div className="flex justify-center mb-8">
+    <img className="w-[60%]" src={VsCodeSqlServer}/>
+</div>
+
+Once logged in, on the left pane, you should see the table `dbo.Articles` with its schema: 
+
+<div className="flex justify-center mb-8">
+    <img className="w-[30%]" src={ArticlesTable}/>
+</div>
+
+Now that we have a SQL table, let's load the CSV data into it.
+
+### Load the SQL data 
+
+1. In the `variables.local.ps1` file, set the following variables to match your SQL database configuration (leave other values as is):
+
+| Variable                         | Description                          | Example                         |
+|----------------------------------|--------------------------------------|---------------------------------|       
+| **ENV_SQL_SERVER_NAME**          | The name of the SQL server created. You can find this information by browsing to the Azure resource in the resource group.  | `sql-ai-<id>.database.windows.net`  |
+| **ENV_SQL_DATABASE_NAME**        | The name of the SQL database created. You can find this information by browsing to the Azure resource in the resource group. | `sql-ai-<id>`   |
+
+2. From the folder `/workshop`, run the following command to load the data from the CSV file into the SQL database:
+
+```powershell title="Load SQL Data"
+> insert-data.ps1 -Manual -Verbose
+```
+
+3. Verify the data has been loaded correctly by querying the `Articles` table in the SQL Server extension in Visual Studio Code. To do so, right-click on the `Articles` table, select `SQL Scripts`, and select `Select Top 1000`:
+
+<div className="flex justify-center mb-8">
+    <img className="w-[90%]" src={SqlData}/>
+</div>
+
+Now that we've created the SQL infrastructure and loaded sample data, it is time to index it in Azure AI Search.
+
+### Provision Microsoft Foundry instance with embeddings model
+
+Since the solution will use the RAG pattern to answer questions based on the data, we need to vectorize the content of the `text` column from our SQL table to perform semantic search. To do so, we'll use the AI model `text-embedding-3-large` from OpenAI provisioned in an Microsoft Foundry project. This model will be consumed by the AI Search service to vectorize the data during the crawl operation via an [embedding skill](https://learn.microsoft.com/en-us/azure/search/cognitive-search-skill-azure-openai-embedding).
+
+1. From the folder `/workshop`, run the following command to deploy the Microsoft Foundry resource with our embeddings model:
+
+```powershell title="Deploy SQL Server and Database"
+.\deploy-infra.ps1 -Module 'Module2.1'
+```
+
+2. Once the deployment is complete, you should see the new AI Foundry resource created in the resource group:
+
+<div className="flex justify-center mb-8">
+    <img className="w-[90%]" src={FoundryProject}/>
+</div>
+
+2. Go to the Foundry resource and then _Models_. You should see `text-embedding-3-large` provisioned:
+
+<div className="flex justify-center mb-8">
+    <img className="w-[90%]" src={FoundryEmbeddingModel}/>
+</div>
+
+Now the embedding model is ready to be used by the AI Search service to vectorize our data during indexing.
+
+### Provision Azure AI Search instance and configure index
+
+1. From the folder `/workshop`, run the following command to deploy the Azure AI Search instance:
+
+```powershell title="Deploy Azure Search instance"
+.\deploy-infra.ps1 -Module 'Module2.2'
+```
+
+This will deploy an empty Azure AI Search instance (`free` SKU) in the resource group without any configuration. The procedure below demonstrates how to do it via the Azure Portal detailing all the steps and implications.
+
+:::info 
+To automate the configuration of the AI Search instance (data source, index, skillset, indexer), you can also run the following script with the `-ConfigureSearch` parameter:
+```powershell title="Deploy SQL Server and Database"
+.\deploy-infra.ps1 -Module 'Module2.2' -ConfigureSearch
+```
+:::
+
+:::danger Managing Azure AI Search Costs
+Azure AI Search can incur significant costs. For development scenarios, always use the lowest tier that meets your requirements and delete the resource when it's not actively being used. Note that billing continues even when the service is idle.
+:::
+
+2. Once the deployment is complete, you should see the new AI Search resource created in the resource group:
+
+<div className="flex justify-center mb-8">
+    <img className="w-[90%]" src={AzureSearchResource}/>
+</div>
+
+Now that we have a proper search instance, we need to create a data source, index, skillset, and indexer for our data.
+
+#### Create data source
+
+Let's start by adding the SQL database as a data source for the AI Search instance.
+
+1. Click on _Search management_→_Data sources_ and select the Azure SQL database as the data source. Fill in the required properties as follows:
+
+    <div className="flex justify-center mb-10">
+        <div>
+            <ul>
+                <li>**Name**: ai-knowledge-sql</li>
+                <li>**Subscription**: Your Azure subscription</li>
+                <li>**Azure SQL account type**: SQL databases</li>
+                <li>**Server**: _Previously created SQL server name (e.g. `sql-ai-<id>`)_</li>
+                <li>**Database**: _Previously created SQL database name (e.g. `sqldb-ai-<id>`)_</li>
+                <li>**Table or View**: Table</li>
+                <li>**Schema**: dbo</li>
+                <li>**Table name**: Articles</li>
+                <li>**Authenticate using managed identity**: Enabled</li>
+                <ul>
+                    <li>**Managed identity type**: User-assigned</li>
+                    <li>**User-assigned managed identity**: Managed identity created during the deployment `id-ai-<id>`</li>
+                </ul>   
+            </ul>    
+        </div>
+        <div className='flex justify-center items-center'><img className="w-[70%]" src={SearchAddDataSource}/></div>
+    </div>
+
+#### Create index
+
+1. Click on _Search management_→_Indexes_ and create a new index. Remove the **Key** attribute from the default `id` field:
+
+    <div className="flex justify-center">
+        <img className="w-[40%]" src={RemoveIdKey}/>
+    </div>
+
+2. Add the following fields matching the schema of the `Articles` table. Use **ai-knowledge-index** as the index name:
+
+    <div className="flex justify-center">
+        <img className="w-[80%]" src={SearchIndexFields}/>
+    </div>
+
+    :::warning
+    Don't save the index at this point!
+    :::
+
+3. Create a vector field `text_vector` to store the embeddings generated by the AI Foundry model:
+
+    <div className="flex justify-center mb-10">
+        <div className='w-[50%]'>
+            <ul>
+                <li>**Name**: `text_vector`</li>
+                <li>**Type**: Collection(Edm.Single)</li>
+                <li>**Attributes**</li>
+                <ul>
+                    <li>**Include in storage**: Set</li>
+                    <li>**Retrievable**: Set</li>
+                    <li>**Dimensions**: 1024</li>
+                </ul>
+                <li>**Vector profile**</li>
+                <ul>
+                    <li>**Name**: `ai-knowledge-aiFoundryCatalog-text-profile`</li>
+                    <li>**Algorithm**: `ai-knowledge-aiFoundryCatalog-text-profile`</li>
+                    <ul>
+                        <li>**Name**: `ai-knowledge-algorithm`</li>
+                        <li>**Kind**: exhaustiveKnn</li>
+                        <li>**Similarity metric**: cosine</li>
+                    </ul>
+                </ul>
+                <li>**Vectorizers**</li>
+                <ul>
+                    <li>**Name**: `ai-knowledge-aiFoundryCatalog-text-vectorizer`</li>
+                    <li>**Kind**: Microsoft Foundry (Preview)</li>
+                    <li>**Subscription**: Your Azure subscription</li>
+                    <li>**Microsoft Foundry/Hub project**: _The AI Foundry project created earlier (e.g. `project-ai-<id>`)_</li>
+                    <li>**Model deployment**: `text-embedding-3-large`</li>
+                    <li>**Authentication type**: API key</li>
+                </ul>  
+            </ul>    
+        </div>
+        <div className='flex justify-center items-center'><img className="w-[80%]" src={SearchIndexVectorField}/></div>
+    </div>
+
+    :::tip
+    - **Vectorizer**: Used **at query time** to convert the input query into a vector representation that can be compared against indexed vectors using the algorithm defined in the vector profile. **Critical**: The vectorizer must use the same embedding model as the one used to generate the indexed vectors. Using different models will result in incompatible vector spaces, leading to irrelevant search results (like comparing apples to oranges).
+    - **Dimensions**: Specifies the number of vector dimensions returned by the AI Foundry model `text-embedding-3-large`. Note that this doesn't need to match the model's maximum capacity (3072 dimensions). [Reducing dimensions often produces comparable results while decreasing storage requirements and improving cosine similarity calculation performance](https://devblogs.microsoft.com/azure-sql/embedding-models-and-dimensions-optimizing-the-performance-resource-usage-ratio/).   
+    - **Include in storage**: While enabled here for demonstration purposes, this option is typically unnecessary in production as it increases index storage size. Only enable it if you need direct access to the raw vector values.
+    - **Algorithm**: exhaustiveKnn (K-Nearest Neighbors) provides higher precision but requires more computational resources compared to HNSW (Hierarchical Navigable Small World). Select the algorithm based on your performance requirements and accuracy needs. More details [here](https://www.myscale.com/blog/hnsw-vs-knn-algorithm-comparison/).
+    - **Fields**: Making the fields `title` and `link` **retrievable** will include them in the search response and allow the agent to provide correct citations in the Foundry chat playground. Otherwise, you'll get `doc_1`, `doc_2`, etc. as source references.
+    :::
+
+4. Add remaining fields for text splitting and chunking:
+
+    Before being vectorized, the initial content of the `text` column is chunked into smaller pieces to improve retrieval performance and accuracy. For this, we need to add additional fields to the index to support chunking:
+
+        - `chunk_id`: unique identifier for each chunk in the index.
+        - `chunk`: small extract of the `text` content. **This is the value that will be used by your agent to answer questions.**
+        - `parent_id`: The name of the field providing the key for the parent document. This information is set by the TextSplit skill in the skillset to get metadata about the original document and append it to chunks.
+
+    <div className="flex justify-center">
+        <img className="w-[80%]" src={SearchIndexChunkFields}/>
+    </div>
+
+    :::warning
+    Make sure the `chunk_id` Analyzer is set to 'Keyword' and has the **Key** attribute. This is required by the TextSplit skill. If not set correctly, you'll have to recreate the index from scratch.
+    :::
+
+5. Create the index.
+
+6. Open the newly created index and edit it using the JSON view. 
+
+    Remove the `apiKey` property from the vectorizer settings and add a user-assigned managed identity by adding the `azureOpenAIParameters.authIdentity` property as shown below. You can find the user-assigned managed identity resource ID information by browsing to the Azure resource in the resource group and selecting _JSON View_:
+
+        <div className="flex justify-center">
+            <img className="w-[80%]" src={UserAssignedResourceId}/>
+        </div>
+
+    ```json title="Replace API key authentication by user-assigned managed identity"
+    {
+        "azureOpenAIParameters": {
+            ...
+            "authIdentity": {
+                "@odata.type": "#Microsoft.Azure.Search.DataUserAssignedIdentity",
+                "userAssignedIdentity": "/subscriptions/6376598d-9260-4e25-b38b-80cc330e4be0/resourceGroups/<rg-name>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-ai-<id>"
+            }
+        }
+    }
+    ```
+
+#### Create skillset
+
+1. Click on _Search management_→_Skillsets_ and add a new skillset. Give it a name and a description:
+
+    - `name`: ai-knowledge-skillset
+    - `description`: Skillset to chunk documents and generate embeddings
+
+2. Click on "Add a new skill" and add a **Split Skill** using the following JSON (and remove the default empty one):
+
+    <div className="flex justify-center mb-10">
+        <div className='w-[50%]'>
+            ```json title="Text Split Skill JSON"
+            {
+                "@odata.type": "#Microsoft.Skills.Text.SplitSkill",
+                "name": "#1",
+                "description": "Split skill to chunk documents",
+                "context": "/document",
+                "defaultLanguageCode": "en",
+                "textSplitMode": "pages",
+                "maximumPageLength": 2000,
+                "pageOverlapLength": 500,
+                "maximumPagesToTake": 0,
+                "unit": "characters",
+                "inputs": [
+                    {
+                        "name": "text",
+                        "source": "/document/text",
+                        "inputs": []
+                    }
+                ],
+                "outputs": [
+                    {
+                        "name": "textItems",
+                        "targetName": "pages"
+                    }
+                ]
+            }
+            ```
+        </div>
+        <div className='flex justify-center items-center'><img className="w-[80%]" src={TextSplitSkillAdd}/></div>
+    </div>
+
+    In this skill, we take the content of the `text` index field and split it into arbitrary smaller chunks of a maximum of 2000 characters with an overlap of 500 characters between chunks to maintain context.
+
+3. Add a new **Azure OpenAI Embedding Skill** with the following JSON. 
+
+    :::warning
+    You need to replace the following values with your own from your environment:
+
+        - `resourceUri`: The endpoint of your Azure OpenAI resource where the model is deployed (e.g., `https://cog-ai-<id>.openai.azure.com`).
+        - `userAssignedIdentity`: The full resource ID of the user-assigned managed identity created during the deployment (e.g., `/subscriptions/6376598d-9260-4e25-b38b-80cc330e4be0/resourceGroups/<rg-name>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-ai-<id>`).
+    :::
+
+    <div className="flex justify-center mb-10">
+        <div className='w-[50%]'>
+            ```json title="Text Split Skill JSON"
+            {
+                "@odata.type": "#Microsoft.Skills.Text.AzureOpenAIEmbeddingSkill",
+                "name": "#2",
+                "context": "/document/pages/*",
+                "resourceUri": "https://cog-ai-<id>.openai.azure.com",
+                "deploymentId": "text-embedding-3-large",
+                "dimensions": 1024,
+                "modelName": "text-embedding-3-large",
+                "inputs": [
+                    {
+                    "name": "text",
+                    "source": "/document/pages/*",
+                    "inputs": []
+                    }
+                ],
+                "outputs": [
+                    {
+                    "name": "embedding",
+                    "targetName": "text_vector"
+                    }
+                ],
+                "authIdentity": {
+                    "@odata.type": "#Microsoft.Azure.Search.DataUserAssignedIdentity",
+                    "userAssignedIdentity": "/subscriptions/6376598d-9260-4e25-b38b-80cc330e4be0/resourceGroups/<rg-name>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-ai-<id>"
+                }
+            }
+            ```
+        </div>
+        <div className='flex justify-center items-center'><img className="w-[80%]" src={AzureOpenAIEmbeddingSkillAdd}/></div>
+    </div>
+
+    In this skill, the output of the Text Split skill (i.e., the chunks of text) is vectorized using the Azure OpenAI model `text-embedding-3-large` and stored in the `text_vector` field created earlier in the index using the same dimension size as the index field.
+
+    :::info
+    Different [chunking strategies](https://learn.microsoft.com/en-us/azure/search/vector-search-how-to-chunk-documents) and skills can be used depending on the type of content.
+    :::
+
+4. Finalize the configuration of the skillset by setting the index projections:
+
+    Index projections define which fields from the source documents are included in the indexed chunks. This is crucial for ensuring that the agent has access to all necessary context when retrieving information. By projecting relevant metadata (like author, title, link) alongside the chunked text, the agent can provide more informative and context-aware responses. The mechanism in Azure AI Search is explained [here](https://learn.microsoft.com/en-us/azure/search/search-how-to-define-index-projections?tabs=rest-create-index%2Crest-create-index-projection). 
+
+    ```json title="Skillset index projections"
+    "indexProjections": {
+        "selectors": [
+            {
+                "targetIndexName": "ai-knowledge-index",
+                "parentKeyFieldName": "parent_id",
+                "sourceContext": "/document/pages/*",
+                "mappings": [
+                    {
+                        "name": "text_vector",
+                        "source": "/document/pages/*/text_vector",
+                        "inputs": []
+                    },
+                    {
+                        "name": "chunk",
+                        "source": "/document/pages/*",
+                        "inputs": []
+                    },
+                    {
+                        "name": "author",
+                        "source": "/document/author",
+                        "inputs": []
+                    },
+                    {
+                        "name": "link",
+                        "source": "/document/link",
+                        "inputs": []
+                    },
+                    {
+                        "name": "title",
+                        "source": "/document/title",
+                        "inputs": []
+                    }
+                ]
+            }
+        ],
+        "parameters": {
+            "projectionMode": "skipIndexingParentDocuments"
+        }
+    }
+    ``` 
+
+5. Remove the `cognitiveServices`, `knowledgeStore`, and `encryptionKey` properties and save the skillset.
+
+Now that we've created the skillset, the last part of the indexing process is to create the indexer, which ties all other search pieces together to perform the crawl operation.
+
+#### Create indexer
+
+1. Click on _Search management_→_Indexers_ and add new indexer **as JSON** with the following JSON:
+
+    ```json title="Create Indexer JSON"
+    {
+        "name": "ai-knowledge-indexer",
+        "dataSourceName": "ai-knowledge-sql",
+        "targetIndexName": "ai-knowledge-index",
+        "skillsetName": "ai-knowledge-skillset",
+        "fieldMappings": [
+            {
+            "sourceFieldName": "id",
+            "targetFieldName": "chunk_id"
+            }
+        ]
+    }
+    ```
+
+    We use a custom field mapping to tell the indexer how to map the source field `id` (from the data source) to the target field `chunk_id` for each processed item (field mappings can't be set via the UI).
+    
+2. Click on _Save_ to create the indexer. The crawl should start automatically. You can monitor the progress from the indexer page. If your configuration is done correctly, the crawl should be successful with 337 documents indexed:
+
+    :::info
+    Comparing the number of processed documents in the indexer (**337**) with the number of items in the index (**1712**) reveals that only the chunks are actually inserted into the index. The original documents are not present in the search index—only their chunked representations with associated metadata. The number of documents in the index will depend on the chunk size.
+
+    <div className="flex justify-center items-center flex-col space-y-2">
+        <img className="w-[80%]" src={IndexerDocsCount}/>
+        <img className="w-[80%]" src={IndexDocsCount}/>
+    </div>
+    :::
+
+
+    :::danger Embeddings cost optimization for development
+    Generating embeddings incurs both monetary costs and processing time, which scale with your dataset size. In development scenarios, work with a small representative subset of data or mock the embedding generation process to save time and reduce costs. Reserve full-scale indexing for staging and production environments.
+    :::
+
+## Module wrap-up
+
+In this module, you successfully provisioned and configured the foundational infrastructure for your RAG-based AI agent solution. Here's what you accomplished:
+
+**Data Storage & Preparation**
+- Deployed a SQL Server and database using Bicep templates and Azure deployment stacks
+- Loaded sample article data from a CSV file into the SQL database
+- Designed a SQL schema optimized for vectorization with merged searchable content
+
+**AI Services & Embeddings**
+- Provisioned an Microsoft Foundry project with the `text-embedding-3-large` model
+- Configured the embeddings model to convert text content into vector representations for semantic search
+
+**Search Infrastructure**
+- Deployed an Azure AI Search instance and configured it for vector search capabilities
+- Created a search index with both traditional fields and vector fields for embeddings
+- Set up a data source connection from Azure AI Search to your SQL database using managed identity authentication
+
+**Content Processing Pipeline**
+- Built a skillset with text splitting capabilities to chunk large documents into smaller, manageable pieces (2000 characters with 500-character overlap)
+- Configured an Azure OpenAI embedding skill to vectorize each chunk using the same model deployed in AI Foundry
+- Implemented index projections to ensure chunks include relevant metadata (author, title, link) for context-aware retrieval
+
+**Indexing & Vectorization**
+- Created and ran an indexer that orchestrates the entire process: extracting data from SQL, chunking text, generating embeddings, and populating the search index
+- Successfully indexed 337 source documents, resulting in 1712 searchable chunks with their corresponding vector embeddings
+
+Your infrastructure is now ready to support semantic search queries. In the next module, you'll create a basic RAG agent that leverages this search index to retrieve relevant information and generate contextually accurate responses.
+
+<div className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="text-2xl font-bold mb-3">Ready to continue?</div>
+    <a href="../modules/module3" className="inline-block px-8 py-3 bg-white text-fuchsia-600 font-bold rounded-xl hover:bg-gray-100 transition-all duration-300 hover:scale-105 shadow-lg no-underline hover:no-underline">
+        <div>Go to Module 3 →</div>
+    </a>
+</div>

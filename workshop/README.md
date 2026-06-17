@@ -1,0 +1,49 @@
+## Create a RAG-Powered AI Agent Using AI Foundry and Microsoft 365 Agents SDK
+
+## Workshop objective
+
+This comprehensive workshop provides a structured, step-by-step guide to building production-ready AI agents using the Retrieval-Augmented Generation (RAG) pattern. Participants will learn to leverage Microsoft Foundry as the orchestration platform and integrate seamlessly with Microsoft 365 through the Agents SDK for front-end user experiences. The content is designed around common enterprise constraints, technical requirements, and development practices, making it applicable to real-world AI projects.
+
+## Getting started
+
+> The workshop documentation site is available in the local `documentation` folder.
+
+## Modules
+
+This workshop is composed of the following modules
+
+| Module | Description | Estimated time |
+|--------|-------------|----------------|
+| [Module #1: Introduction - Solution Overview, Architecture and Planning](./modules/module1) | The workshop introduces a Microsoft-based stack-Microsoft 365, Azure, and supporting tooling-highlighting its advantages in scalability, monitoring, and testability compared to Copilot Studio. It also covers how to select suitable LLMs by assessing cost, capability, and availability within enterprise constraints, and explains how to securely leverage Microsoft 365 knowledge sources and custom connectors.  |  **30 minutes** |
+| [Module #2: Provisioning resources](./modules/module2) | This module covers how to automate infrastructure setup using Bicep templates and deployment stacks, along with provisioning and configuring LLM resources. It then walks through preparing data for RAG‑based agents, including defining SQL schemas, configuring Azure AI Search embeddings, and applying chunking strategies to ensure optimal retrieval performance. | **1 hour** |
+| [Module #3: Basic Agent Implementation in Microsoft Foundry ](./modules/module3) | This module introduces the Microsoft Foundry Agent Service and demonstrates how to build a simple RAG agent in both Node.js and Python that integrates with Azure AI Search. It also covers designing multi‑agent workflows and provides guidance on testing and evaluating agent responses directly within Microsoft Foundry. | **30 minutes** |
+| [Module #4: Expose Your Agent to Teams and Copilot](./modules/module4) | This module demonstrates implementing the Microsoft 365 Agents SDK alongside the Microsoft Foundry SDK, covering both streamed and non‑streamed interaction patterns. It walks through configuring Azure Bot Service in development mode and performing local debugging and testing in Teams—via a local playground and DevTunnels for Teams and Copilot—then explains how to integrate with Copilot Studio and connect (or publish) declarative Copilot agents | **1 hour** |
+| [Module #5: Consuming Data from Microsoft 365 Copilot Retrieval API](./modules/module5) | This module explains how to enable secure user authentication in Teams and Copilot using Single Sign‑On by configuring an Entra ID application and the Azure Bot Service. It also covers integrating Microsoft Graph through LLM Tools and OpenAPI, along with best practices for handling authentication flows within Teams and Copilot experiences. | **1 hour** |
+| [Module #6: Deploy Your Agent to Azure and Microsoft 365](./modules/module6) | This module outlines best practices for managing environments and governing the full solution lifecycle to ensure stable development, testing, and production operations. It then covers deploying back-end services into Azure using enterprise-aligned patterns, followed by guidance on packaging a Teams application and configuring its manifest for proper deployment and channel distribution| **45 minutes** |
+
+## Prerequisites
+
+To run this workshop correctly, you'll need the following prerequisites:
+
+- Clone the workshop repository provided for this training.
+- Visual Studio Code with the following extensions:
+    - [Microsoft 365 Agents Toolkit](https://marketplace.visualstudio.com/items?itemName=TeamsDevApp.ms-teams-vscode-extension)
+    - [AI Toolkit](https://marketplace.visualstudio.com/items?itemName=ms-windows-ai-studio.windows-ai-studio)
+    - [SQL Server (mssql)](https://marketplace.visualstudio.com/items?itemName=ms-mssql.mssql)
+    - [Python extension](https://marketplace.visualstudio.com/items?itemName=ms-python.python) (if using Python)
+    - **Node.js stack**:
+        - Node.js v22 or later. We recommend the usage of **nvm** to manage your Node.js versions:
+            - [NVM for Windows](https://github.com/coreybutler/nvm-windows)
+            - [NVM for macOS](https://github.com/nvm-sh/nvm)
+    - **Python stack**:
+        - Python 3.9 or newer. To install Python, go to [https://www.python.org/downloads/](https://www.python.org/downloads/), and follow the instructions for your operating system.
+- [PowerShell 7 (Core)](https://learn.microsoft.com/en-us/powershell/scripting/install/install-powershell-on-windows?view=powershell-7.5) with the following modules installed:
+    - `Install-Module -Name Az.Accounts, Az.Resources, Az.Network, Az.Websites, Az.KeyVault -Scope CurrentUser -Force -AcceptLicense`
+- [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/?view=azure-cli-latest)
+- [GitHub Copilot](https://github.com/features/copilot) **is highly recommended (especially for Python developers...)**.
+- [Bicep v0.38.3+](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/install#install-manually)
+
+> SSL & Network Errors
+> If not already done, configure your environment correctly for tools like Node.js and Python to work with SSL. Follow your organization's network and certificate setup guidance.
+
+

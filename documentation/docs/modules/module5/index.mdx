@@ -1,0 +1,1060 @@
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import Architecture from './img/architecture_module5.png';
+import MigrateBot from './img/migrate_bot.png';
+import BotOAuthConnection from './img/bot_oauth_connection.png';
+import BotMsAppId from './img/bot_msapp_id.png';
+import MigrateBotCustomDeployment from './img/migrate_bot_custom_deployment.png';
+import BotConfiguration from './img/bot_configuration.png';
+import TeamsSignInCard from './img/signin_card.png';
+import SignInFirstInteraction from './img/copilot_signin_first_interaction.png';
+import TeamsAddApp from './img/add_teams_app.png';
+import DebugInTeams from './img/debug_in_teams.png';
+import AgentResponseWithoutCitations from './img/agent_response_without citations.png';
+import AgentResponseWithCitationsTeams from './img/agent_response_with_citations_teams.png';
+import AgentResponseWithCitationsCopilot from './img/agent_response_with_citations_copilot.png';
+
+# Module 5: Consuming Data from Microsoft 365 Copilot Retrieval API
+
+In this module, we'll update the agent to consume data directly from Microsoft 365 using the Copilot Retrieval Microsoft Graph API. As this API requires authentication, we will leverage the built-in mechanism of the Microsoft 365 Agents SDK to sign in users and retrieve data on their behalf.
+
+<div id="sticky-banner" className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="flex items-center justify-center mx-auto">
+        <div className="flex items-center">
+            <div className="inline-flex items-center justify-center w-9 h-9 mr-2 bg-white rounded-full">
+                <span>⏰</span>
+            </div>
+            <div className="text-2xl font-bold">Estimated time: 1 hour</div>
+        </div>
+    </div>
+</div>
+<br></br>
+**Learning Objectives**
+
+By completing this module, you will learn how to:
+- Add authentication with single sign-on to your agent through the Microsoft 365 Agents SDK and Teams/Copilot channel.
+- Use LLM function calling capability to call Graph API endpoints and retrieve data from Microsoft 365 on behalf of the signed-in user.
+
+## Architecture
+
+The target architecture for this module is illustrated below:
+
+<div className="flex justify-center">
+    <img className="w-[60%]" src={Architecture}/>
+</div>
+
+## Implementation steps
+
+:::note
+For this part, you have the choice to use either TypeScript/Node.js or Python stack. Both implementations will be similar and will use the same Microsoft Foundry SDK and Microsoft 365 Agents SDK libraries.
+:::
+
+### Setup authentication prerequisites
+
+1. Update `appPackage/manifest.json` to update the `validDomains` property with the following values. They will be used as part of the authentication flow.
+
+    ```json
+    {
+        "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.23/MicrosoftTeams.schema.json",
+        ...
+        "validDomains": [
+            "token.botframework.com",
+            "login.microsoftonline.com"
+        ]
+    }
+    ```
+
+1. On the SPN used for authentication, add the redirect URL [https://token.botframework.com/.auth/web/redirect](https://token.botframework.com/.auth/web/redirect) for "web" platform.
+
+1. Migrate the bot to Azure
+
+    Because bots registered in the developer portal don't support OAuth connection creation, you need to migrate it to Azure as a dedicated resource. Go to [https://dev.botframework.com/bots](https://dev.botframework.com/bots) and log in with the same account as the Microsoft 365 Agents SDK extension. Select your bot and click on _"Migrate"_ to create a new Azure Bot instance in Azure.
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={MigrateBot}/>
+    </div>
+
+    Use the previously created Azure resource group (Ex: `rg-ai-foundry-workshop-<your-initials>`) and select "Canada East" for the region. Make sure to select the **F0** SKU for the bot service.
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={MigrateBotCustomDeployment}/>
+    </div>
+
+    Click on _Review + Create_ to start deployment. Once deployed, go to the Azure resource. It should be named with a GUID. Then, go to the _Configuration_ setting:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={BotConfiguration}/>
+    </div>   
+
+    :::info Bot app type
+    When creating a new Azure bot in Azure, you have to select the type of app according to your environment (dev/prod). **The choice you make here will have an impact on how you should configure your environment variables in your bot project (we'll cover this in the next section)**.
+
+    - ➡️ In **development** scenarios, you should use **"Single tenant"**. In this scenario, the communication between your application and the bot service will be made through [client id/client secret](https://learn.microsoft.com/en-us/microsoft-365/agents-sdk/azure-bot-create-single-secret).
+
+    - ➡️ In **production** scenarios, you should use **"User-Assigned Managed Identity"**: In this scenario, the communication between your application and the bot service will be made through a [user-assigned managed identity](https://learn.microsoft.com/en-us/microsoft-365/agents-sdk/azure-bot-create-managed-identity) (typically attached to the Azure App Service used to host your application, avoiding the need to manage secrets). **You can't use this option in local development scenarios**.
+
+    Migrating from the developer portal will always create a bot with client id/secret (i.e., Single Tenant).
+    :::
+
+1. Click on _Add OAuth Connection Settings_: 
+
+    In bot configuration in Azure, create a new OAuth connection with these settings:
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[30%]" src={BotOAuthConnection}/>
+    </div>
+
+    - Name: `copilotCustomAuth`. **This name is quite important as it will be used in your agent code.**
+    - Service Provider: `Azure Active Directory v2`
+    - Client id: `<your-client-id>`
+    - Client secret: Retrieve this from your secure secret manager. This is the same client secret used for deployment.
+    - Token Exchange URL: `<leave blank>`
+    - Tenant ID: `<your-tenant-id>`
+    - Scopes: `openid profile Sites.Read.All ExternalItem.Read.All` (same as defined in the Entra ID app).
+
+
+1. Ensure the following environment variables are correctly set (for Node.js → `.localConfigs`, for Python → `.env`). These values will be used for SSO authentication in the bot code.
+
+    <Tabs defaultValue="typescript" values={[
+    { label: 'TypeScript', value: 'typescript' },
+    { label: 'Python', value: 'python' },
+    ]}>
+    <TabItem value="typescript">
+    ```plaintext title=".localConfigs"
+    clientId=<client id of the Entra ID app used for the Bot (not the SSO app)>
+    tenantId=<tenant id of the Entra ID app used for the Bot (not the SSO app)>
+    clientSecret=<client secret of the Entra ID app used for the Bot (not the SSO app). Generate a new one>
+    ```
+    </TabItem>
+    <TabItem value="python">
+    ```plaintext title=".env"
+    CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID=<client id of the Entra ID app used for the Bot (not the SSO app)>
+    CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID=<tenant id of the Entra ID app used for the Bot (not the SSO app)>
+    CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET=<client secret of the Entra ID app used for the Bot (not the SSO app). Generate a new one>
+    ```
+    </TabItem>
+    </Tabs>
+
+    Where:
+
+    - `clientId`/`CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID` corresponds to the **Microsoft App ID** created when you migrated the bot to Azure:
+
+      <div className="flex justify-center mb-10">
+          <img className="w-[50%]" src={BotMsAppId}/>
+      </div>
+
+    - `tenantId`/`CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID` corresponds to your Microsoft Entra tenant ID.
+    - `clientSecret`/`CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET` corresponds to the client secret generated for the Entra ID app used for the bot **Microsoft App ID**. You'll need to generate a new one. For this, go to the Azure Bot resource, then _Configuration_, and click on _Manage Password_ next to the **Microsoft App ID**. This will open the Entra ID app registration. Go to _Certificates & secrets_ and create a new client secret. Copy the value and set it in the `.localConfigs` file.
+
+    Now that we have configured authentication on the bot side, we need to update the agent code to use it.
+
+### Update the agent code to use authentication
+
+The Microsoft 365 Agents SDK provides a simple way to integrate authentication in your bot through SSO. The SDK handles most of the complexity of the OAuth flow for you. Authentication settings are provided through specific environment variables you need to set.
+
+<Tabs defaultValue="typescript" values={[{ label: 'TypeScript', value: 'typescript' },{ label: 'Python', value: 'python' }]}>
+<TabItem value="typescript">
+
+1. In `agent.ts`, update the constructor to configure authentication settings to use SSO:
+
+    ```typescript title="Configure authentication in bot"
+    export class CustomAgent extends AgentApplication<TurnState> {
+
+      constructor () {
+        super({
+          storage: new MemoryStorage(),    
+          authorization: {
+            graph: { 
+              text: 'Sign in with Microsoft Graph', 
+              title: 'Sign In'
+            },
+          }
+        })
+      }
+    }
+    ```
+
+    The [Microsoft documentation](https://learn.microsoft.com/en-us/microsoft-365/agents-sdk/azure-bot-authentication-for-javascript) doesn't make this very clear, but the `graph` key requires an environment variable to be defined using the **exact** format:
+
+      `<key>_connectionName=<name of the connection in the Azure Bot instance>`
+
+    In this example, the variable should be:
+
+      `graph_connectionName=copilotCustomAuth`
+
+    When debugging your agent locally, you must define this variable in `.localConfigs` file corresponding to the application environment variables (accessed through `process.env["var_name"]`). For Azure remote testing, simply define the same variable in the web app's environment variables.
+
+    Another important detail: the way your app connects to the bot depends on how the environment variables are configured.  
+    - If only `clientId` and `tenantId` are defined, the SDK assumes you're using a **user-managed identity** for the bot connection (see explanation above).  
+    - If `clientId`, `clientSecret`, and `tenantId` are defined, the SDK will use the **client ID/secret** method to connect to the bot (see explanation above).
+
+    Because of this behavior, it's important to be very careful when defining your environment variables as this logic is totally hidden to you in the Agents SDK.
+
+1. Update the `index.ts` file and handle general errors (i.e., catch all errors that will be displayed directly to users via channels):
+
+    ```typescript title="Handle general errors for agent"
+    import { startServer } from "@microsoft/agents-hosting-express";
+    import { CustomAgent } from "./agent";
+    import { MemoryStorage, TurnContext } from "@microsoft/agents-hosting";
+
+    const onTurnErrorHandler = async (context: TurnContext, error: Error) => {
+
+      console.error(`\n [onTurnError] unhandled error: ${error}`);
+
+      await context.sendTraceActivity(
+        "OnTurnError Trace",
+        `${error}`,
+        "https://www.botframework.com/schemas/error",
+        "TurnError"
+      );
+
+      await context.sendActivity(
+        `The bot encountered unhandled error:\n ${error.message}`
+      );
+      await context.sendActivity(
+        "To continue to run this bot, please fix the bot source code."
+      );
+    };
+
+    const storage = new MemoryStorage();
+    const customAgent = new CustomAgent(storage);
+    customAgent.adapter.onTurnError = onTurnErrorHandler;
+
+    startServer(customAgent);
+    ```
+
+1. Once the settings are in place, you can start using authentication for agent handlers. Specifying the `['graph']` parameter to the default `message` handler will perform authentication before processing any message from the user. Update the `agent.ts` file to include sign-in handlers and get the token to call the Graph API:
+
+    ```typescript title="Basic authentication flow for agent"
+    export class CustomAgent extends AgentApplication<TurnState> {
+
+      constructor () {
+        super({
+          storage: new MemoryStorage(),    
+          authorization: {
+            graph: { 
+              text: 'Sign in with Microsoft Graph', 
+              title: 'Graph Sign In'
+            },
+          }
+        })
+
+        this._onMessage = this._onMessage.bind(this);
+        this._singinSuccess = this._singinSuccess.bind(this);
+        this._singinFailure = this._singinFailure.bind(this);
+
+        this.authorization.onSignInSuccess(this._singinSuccess);
+        this.authorization.onSignInFailure(this._singinFailure);
+
+        this.onActivity(ActivityTypes.Message, this._onMessage, ['graph']);
+        this.onActivity(ActivityTypes.Invoke, this._onInvoke);
+
+      }
+
+      private async _onMessage(context: TurnContext, state: TurnState) {
+
+        try {
+
+            let userTokenResponse;
+            userTokenResponse = await this.authorization.getToken(context, 'graph');
+            if (userTokenResponse && userTokenResponse?.token) {   
+              await this.invokeAgent(context);
+            }
+
+        } catch (ex) {
+          await context.sendActivity(`On message error. Details: ${JSON.stringify(ex)}`);       
+        }
+      }
+
+      private async _singinSuccess(context: TurnContext, state: TurnState, authId?: string): Promise<void> {
+        await context.sendActivity(MessageFactory.text(`User signed in successfully in ${authId}`))
+      }
+
+      private async _singinFailure (context: TurnContext, state: TurnState, authId?: string, err?: string): Promise<void> {
+        await context.sendActivity(MessageFactory.text(`Signing Failure in auth handler: ${authId} with error: ${err}`))
+      }
+    }
+    ```
+
+    The SDK will handle the OAuth authentication flow behind the scenes: if the user is not signed-in, the agent will send a sign-in card on the first interaction. For subsequent calls, the token will be retrieved (or renewed if expired) from the Azure Bot service token cache (where you don't have access unfortunately).
+
+    :::info
+    To start the flow from scratch, you will have to logout manually. It is always a good practice to add a logout method in your bot:
+
+    ```typescript
+    constructor () {
+      ...
+      this.onMessage('/logout', this._logout.bind(this)); // This has to be before the general message handler
+
+      this.onActivity(ActivityTypes.Message, this._onMessage, ['graph']);
+    }
+
+    ...
+    private async _logout(context: TurnContext, state: TurnState): Promise<void> {
+      await this.authorization.signOut(context, state)
+      await context.sendActivity(MessageFactory.text('User logged out'))
+    }
+    ```
+    :::
+
+</TabItem>
+<TabItem value="python">
+
+1. In `env.local`, add the following values:
+
+    ```plaintext title="Configure authentication in bot"
+    AGENTAPPLICATION__USERAUTHORIZATION__HANDLERS__GRAPH__SETTINGS__AZUREBOTOAUTHCONNECTIONNAME=copilotCustomAuth
+    ```
+
+    The [Microsoft documentation for Node.js](https://learn.microsoft.com/en-us/microsoft-365/agents-sdk/azure-bot-authentication-for-javascript) doesn't make this very clear, but the `graph` key requires an environment variable to be defined using the **exact** format:
+
+      `AGENTAPPLICATION__USERAUTHORIZATION__HANDLERS__<key>__SETTINGS__AZUREBOTOAUTHCONNECTIONNAME=<name of the connection in the Azure Bot instance>`
+
+    In this example, the variable should be:
+
+      `AGENTAPPLICATION__USERAUTHORIZATION__HANDLERS__GRAPH__SETTINGS__AZUREBOTOAUTHCONNECTIONNAME=copilotCustomAuth`
+
+    :::warning
+    Python variables are not documented...
+    :::
+
+    When debugging your agent locally, you must define this variable in `.localConfigs` file corresponding to the application environment variables (accessed through `process.env["var_name"]`). For Azure remote testing, simply define the same variable in the web app's environment variables.
+
+    Another important detail: the way your app connects to the bot depends on how the environment variables are configured.  
+    - If only `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID` and `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID` are defined, the SDK assumes you're using a **user-managed identity** for the bot connection (see explanation above).  
+    - If `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID`, `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET`, and`CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID` are defined, the SDK will use the **client ID/secret** method to connect to the bot (see explanation above).
+
+    Because of this behavior, it's important to be very careful when defining your environment variables as this logic is totally hidden to you in the Agents SDK.
+
+1. In `agent.py`, create the `Authorization` manager and pass it to the `AgentApplication` instance:
+
+    ```python title="Configure authentication in agent.py"
+    from microsoft_agents.hosting.core import (
+        AgentApplication,
+        TurnState,
+        TurnContext,
+        MemoryStorage,
+        Authorization,
+    )
+    ...
+
+    storage = MemoryStorage()
+    connection_manager = MsalConnectionManager(**agents_sdk_config)
+    adapter = CloudAdapter(connection_manager=connection_manager)
+    authorization = Authorization(storage, connection_manager, **agents_sdk_config)
+
+    agent_app = AgentApplication[TurnState](
+        storage=storage,
+        adapter=adapter,
+        authorization=authorization,
+        **agents_sdk_config,
+    )
+    ```
+
+1. Once the settings are in place, you can start using authentication for agent handlers. Specifying the `auth_handlers=["GRAPH"]` parameter on the default `message` handler will perform authentication before processing any message from the user. Update the `agent.py` file to register the sign-in handlers and get the token to call the Graph API:
+
+    ```python
+    async def signin_success(context: TurnContext, state: TurnState, auth_id: Optional[str] = None) -> None:
+        await context.send_activity(f"User signed in successfully in {auth_id}")
+
+
+    async def signin_failure(context: TurnContext, state: TurnState, auth_id: Optional[str] = None, err: Optional[str] = None) -> None:
+        await context.send_activity(f"Signing Failure in auth handler: {auth_id} with error: {err}")
+
+
+    agent_app.auth.on_sign_in_success(signin_success)
+    agent_app.auth.on_sign_in_failure(signin_failure)
+
+
+    @agent_app.activity(ActivityTypes.message, auth_handlers=["GRAPH"])
+    async def on_message(context: TurnContext, state: TurnState):
+        try:
+            token_response = await agent_app.auth.get_token(context, "GRAPH")
+            if token_response and token_response.token:
+                await invoke_agent(context, token_response.token)
+        except Exception as e:
+            await context.send_activity(f"On message error. Details: {str(e)}")
+    ```
+
+    Note we update the `on_message` handler defined in module 4 so it now triggers the SSO flow (`auth_handlers=["GRAPH"]`), retrieves the user token and forwards it to `invoke_agent()` (we switch from streaming back to the non-streaming `invoke_agent()` here, as it will process tool calls in the next steps).
+
+    The SDK will handle the OAuth authentication flow behind the scenes: if the user is not signed-in, the agent will send a sign-in card on the first interaction. For subsequent calls, the token will be retrieved (or renewed if expired) from the Azure Bot service token cache (where you don't have access unfortunately).
+
+    :::info
+    To start the flow from scratch, you will have to logout manually. It is always a good practice to add a logout handler in your bot. It **must** be registered before the general message handler:
+
+    ```python
+    @agent_app.message("/logout")  # This has to be registered before the general message handler
+    async def on_logout(context: TurnContext, state: TurnState):
+        await agent_app.auth.sign_out(context, "GRAPH")
+        await context.send_activity("User logged out")
+    ```
+    :::
+
+</TabItem>
+</Tabs>
+
+- From Visual Studio Code, select the `Debug in Teams (Edge)` debug configuration and press **F5** to run the local debugger. 
+
+    Test your app by going to Teams (web), then _Apps_→_Manage your apps_→_Upload an app_→_Upload a customized app_. From the source code folder of your project, select the file `\apps\AIWorkshopAgentDev<your-name>\appPackage\build\appPackage.local.zip` to upload the bot to Teams.
+
+    <div className="flex justify-center mb-10">
+        <img className="w-[50%]" src={TeamsAddApp}/>
+    </div>
+
+    On the first interaction (Copilot or Teams), you should be prompted to sign in:
+
+    <div className="flex justify-center mb-10 space-x-2">
+      <img className="w-[50%]" src={TeamsSignInCard}/>
+      <img className="w-[50%]" src={SignInFirstInteraction}/>
+    </div>
+
+    Now that we have functional authentication, we can use it to call the Copilot Retrieval API as a tool in the AI Foundry agent.
+
+### Add LLM function calling to call Graph API on behalf of the user
+
+LLM Function calling is a powerful capability that allows LLMs to call external functions based on user input. In this section, we will add a new tool to the agent that will use the Copilot Retrieval API to get documents from SharePoint based on user queries.
+
+<Tabs defaultValue="typescript" values={[{ label: 'TypeScript', value: 'typescript' },{ label: 'Python', value: 'python' }]}>
+<TabItem value="typescript">
+
+1. Update dependencies in `package.json` with the following and run `npm i`:
+
+    ```json
+    "dependencies": {
+      ...
+      "@microsoft/microsoft-graph-client": "3.0.7"
+    }
+    ```
+
+1. Create a new file `src/graph.ts`. This file will contain the logic to call the Microsoft Graph API using the access token retrieved through authentication:
+
+    ```typescript title="Graph API Service"
+    import { Client } from "@microsoft/microsoft-graph-client";
+
+    export class GraphService {
+
+        private graphClient: Client;
+
+        constructor(accessToken: string) {
+
+            this.getCopilotData = this.getCopilotData.bind(this);
+            this.graphClient =  Client.initWithMiddleware(
+                {
+                    authProvider: {
+                        getAccessToken: async () => {
+                            return accessToken
+                        },
+                    }
+                } 
+            );
+        }      
+
+        public async getCopilotData(query: string, language?: string): Promise<any[]> {
+        
+            const response = await this.graphClient.api("/copilot/retrieval").headers({ 
+                  "SdkVersion": "ContosoEnterpriseSearchAgent",  
+                  "Accept-language": language ? language : "en-US"
+                }).post({
+                queryString: query,
+                dataSource: "sharePoint",
+                resourceMetadata: ['title','url'],
+                maximumNumberOfResults: 5
+            });
+
+            return response.retrievalHits;
+        }
+    }
+    ```
+
+    :::warning
+    When using the Copilot Retrieval API, make sure you add the following HTTP headers in the request:
+    - `SdkVersion`: Set to a custom value to identify your application (ex: `ContosoEnterpriseSearchAgent`). This header will limit the Graph API from throttling your requests. For instance if you have many users at the same time using this agent, you may encounter HTTP 429 issues (_"too many requests"_).
+    - `Accept-Language`: Set to the desired language for the results (ex: `en-US`). This header will determine the language of the query. If you omit it, the results may be empty. By default, we reuse the current locale from the Teams/Copilot application. **This behavior is undocumented**.
+    :::
+
+    :::info
+    We use the [Copilot Retrieval API](https://learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/api/ai-services/retrieval/overview) here to read data directly from SharePoint. This API also allows reading data from Copilot connectors, including custom connectors.
+    :::
+ 
+1. Update the `agent.ts` file to update the agent and add a new tool for Graph retrieval. Add the `configureAgentTools()` method and call it from the constructor:
+
+    ```typescript title="Configure agent tools"
+    constructor (storage: Storage) {
+      ...
+      this._singinFailure = this._singinFailure.bind(this);
+
+      this.configureAgentTools().then(() => {
+        console.log("Agent tools configured.");
+      });
+    }
+
+    ...
+
+    private async configureAgentTools() {
+
+      const foundryProject = new AIProjectClient(config.aiFoundryProjectEndpoint!, this.getCredential());
+      const agent = await foundryProject.agents.get(config.agentName as string);
+
+      const sharePointTool = {
+        type: "function",
+        name: "getDocuments",
+        description: "Retrieve user documents from SharePoint based on the user query",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "The user optimized query as keywords" },
+          },
+          required: ["query"],
+          additional_properties: false
+        }
+      }
+      
+      const { tools } = agent.versions.latest.definition as any;
+      if (tools.map(t => t.name).indexOf(sharePointTool.name) === -1) {
+
+        try {     
+          (agent.versions.latest.definition as any).tools.push(sharePointTool);
+          await foundryProject.agents.update(config.agentName as string, {...agent.versions.latest.definition});
+        } catch (error) {
+          throw new Error(`Failed to update agent tools: ${error}`);
+        }
+        
+      } else {
+        console.log("SharePoint tool already exists in the agent definition.");
+      }
+    }
+    ```
+
+    The agent can now use that tool to retrieve the documents from SharePoint when relevant. To be more precise, the agent will **select** that tool as part of its reasoning. **It won't execute anything on its own**. It is up to you to catch that selection in the agent response output and execute the corresponding function code yourself based on that selection.
+
+    :::warning Tool registration timing
+    Because the tool is registered dynamically at runtime here, it is important to register it before any message is processed by the agent. Therefore, the tool registration logic needs to be called **once** at agent class initialization (i.e in the constructor for instance).
+    :::
+
+    :::tip Tool definition
+    Tool definition should be carefully designed to provide the LLM with enough information to use it properly. The more precise the definition, the better the results (ex: parameters description, required parameters, etc.). You can also provide instructions directly in the function description or parameters (like `The user query should be optimized as keywords` in the example above) to guide the LLM on how to use the tool and fill parameters accurately.
+    :::
+
+1. Update the `invokeAgent()` method in the `agent.ts` file to process the tool and pass its output back to the agent:
+
+    ```typescript title="Process tool calls in agent invocation"
+    private async invokeAgent(context: TurnContext, accessToken: string) {
+
+      ...
+
+      let response = await client.responses.create(...)
+
+      const graphService = new GraphService(accessToken);
+      const inputList =[];
+
+      for (const item of response.output) {
+
+          if (item.type === "function_call") {
+
+              switch (item.name) {
+                  case "getDocuments":
+                      // Parse the function arguments
+                      const args = JSON.parse(item.arguments);
+
+                      // Execute the function logic
+                      const documents = await graphService.getCopilotData(args.query, context.activity.locale);
+
+                      // Reformat the output for the LLM
+                      const formattedDocs = documents.map((doc: any) => {
+                          return {
+                              title: doc.resourceMetadata?.title || "No Title",
+                              url: doc.resourceMetadata?.url || doc.webUrl || "No URL",
+                              extracts: doc.extracts || []
+                          };
+                      });
+
+                      // Provide function call results to the model
+                      inputList.push({
+                          type: "function_call_output",
+                          call_id: item.call_id,
+                          output: JSON.stringify({ formattedDocs }),
+                      });
+
+                  break;
+                      default:
+                      console.warn(`Unknown function call: ${item.name}`);
+                  break;
+              }
+          }
+      }
+
+      // Build previous response including tool output
+      response = await client.responses.create(
+          {
+              input: inputList,
+              previous_response_id: response.id,
+              agent_reference:{ 
+                  type: "agent_reference",
+                  name: config.agentName 
+              }
+          } as any
+      );
+
+
+      const lastOutput = response.output[response.output.length - 1] as { content?: Array<{ text?: string }> };
+      await context.sendActivity(lastOutput.content?.[0]?.text ?? "");
+    }
+    ```
+
+    In that code, we add an additional process to check if the agent response contains a tool call. If so, we execute the corresponding function (i.e., call the Graph API through the `GraphService` class) using the `accessToken` passed as a parameter and provide the results back to the agent through a new response creation with the tool output, reusing the previous response ID to keep the context.
+
+</TabItem>
+<TabItem value="python">
+
+1. Add the `httpx` dependency to the `src/requirements.txt` file (used to call the Graph API), then install it:
+
+    ```bash
+    pip install httpx
+    ```
+
+1. Create a new file `graph.py`. This file will contain the logic to call the Microsoft Graph API using the access token retrieved through authentication:
+
+    ```python title="Graph API Service"
+    import httpx
+    from typing import Optional, List, Any
+    import json
+
+    class GraphService:
+        
+        def __init__(self, access_token: str):
+            self.access_token = access_token
+                
+        async def get_copilot_data(self, query: str, language: Optional[str] = None) -> List[Any]:
+
+            request_body = {
+                "queryString": query,
+                "dataSource": "sharePoint",
+                "resourceMetadata": ["title", "url"],
+                "maximumNumberOfResults": 5
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json",
+                "SdkVersion": "ContosoEnterpriseSearchAgent",
+                "Accept-Language": language if language else "en-US"
+            }
+            
+            url = "https://graph.microsoft.com/v1.0/copilot/retrieval"
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json=request_body, headers=headers)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    return data.get("retrievalHits", [])
+                else:
+                    print(f"Error: {response.status_code} - {response.text}")
+                    return []
+            
+            return []
+    ```
+
+    :::warning
+    When using the Copilot Retrieval API, make sure you add the following HTTP headers in the request:
+    - `SdkVersion`: Set to a custom value to identify your application (ex: `ContosoEnterpriseSearchAgent`). This header will limit the Graph API from throttling your requests. For instance if you have many users at the same time using this agent, you may encounter HTTP 429 issues (_"too many requests"_).
+    - `Accept-Language`: Set to the desired language for the results (ex: `en-US`). This header will determine the language of the query. If you omit it, the results may be empty. By default, we reuse the current locale from the Teams/Copilot application. **This behavior is undocumented**.
+    :::
+
+    :::info
+    We use the [Copilot Retrieval API](https://learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/api/ai-services/retrieval/overview) here to read data directly from SharePoint. This API also allows reading data from Copilot connectors, including custom connectors.
+    :::
+
+1. In `agent.py`, add a `configure_agent_tools()` function to register a new Graph retrieval tool on the Foundry agent, and call it once at startup from `app.py`:
+
+    ```python title="Configure agent tools (agent.py)"
+    def configure_agent_tools() -> None:
+        try:
+            agent = project_client.agents.get(config.ENV_FOUNDRY_AGENT_NAME)
+
+            # Define the SharePoint tool
+            sharepoint_tool = {
+                "type": "function",
+                "name": "getDocuments",
+                "description": "Retrieve user documents from SharePoint based on the user query",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The user optimized query as keywords"
+                        }
+                    },
+                    "required": ["query"],
+                    "additional_properties": False
+                }
+            }
+
+            # Agents are immutable: read the latest definition and create a new version with the tool
+            definition = agent.versions.latest.definition.as_dict()
+            tools = definition.get("tools") or []
+            tool_names = [tool.get("name") for tool in tools]
+
+            if sharepoint_tool["name"] not in tool_names:
+                tools.append(sharepoint_tool)
+                definition["tools"] = tools
+                project_client.agents.create_version(
+                    config.ENV_FOUNDRY_AGENT_NAME,
+                    definition=definition,
+                )
+                print(f"Successfully added SharePoint tool to agent '{config.ENV_FOUNDRY_AGENT_NAME}'")
+            else:
+                print("SharePoint tool already exists in the agent definition.")
+
+        except Exception as e:
+            print(f"Error configuring agent tools: {e}")
+            raise
+    ```
+
+    Then, in `app.py`, import and call it once before the server starts accepting messages:
+
+    ```python title="Register the tool at startup (app.py)"
+    from agent import agent_app, connection_manager, configure_agent_tools
+    ...
+
+    if __name__ == "__main__":
+        # Register the agent tools once before the server starts accepting messages
+        configure_agent_tools()
+        run_app(app, host="localhost", port=os.environ.get("PORT", 3978))
+    ```
+
+    :::note Creating a new agent version
+    Unlike the TypeScript SDK which exposes an `update()` method, the Python `azure-ai-projects` SDK registers the change by creating a **new immutable agent version** with `create_version()`. Because an `agent_reference` by name always resolves to the latest version, the agent immediately picks up the new tool.
+    :::
+
+    The agent can now use that tool to retrieve the documents from SharePoint when relevant. To be more precise, the agent will **select** that tool as part of its reasoning. **It won't execute anything on its own**. It is up to you to catch that selection in the agent response output and execute the corresponding function code yourself based on that selection.
+
+    :::warning Tool registration timing
+    Because the tool is registered dynamically at runtime here, it is important to register it before any message is processed by the agent. Therefore, the tool registration logic needs to be called **once** at agent class initialization (i.e in the constructor for instance).
+    :::
+
+    :::tip Tool definition
+    Tool definition should be carefully designed to provide the LLM with enough information to use it properly. The more precise the definition, the better the results (ex: parameters description, required parameters, etc.). You can also provide instructions directly in the function description or parameters (like `The user query should be optimized as keywords` in the example above) to guide the LLM on how to use the tool and fill parameters accurately.
+    :::
+
+1. Update the `invoke_agent()` function in the `agent.py` file to process the tool selection and pass its output back to the agent:
+
+    ```python title="Process tool calls in agent invocation"
+    import json
+    from graph import GraphService
+    ...
+
+    async def invoke_agent(context: TurnContext, access_token: str) -> None:
+        try:
+            client = project_client.get_openai_client()
+
+            conversation = client.conversations.create(
+                items=[
+                    {
+                        "role": "user",
+                        "content": context.activity.text,
+                        "type": "message",
+                    }
+                ],
+                extra_body={"agent_reference": {"type": "agent_reference", "name": config.ENV_FOUNDRY_AGENT_NAME}},
+            )
+
+            response = client.responses.create(
+                model=config.ENV_FOUNDRY_AGENT_MODEL,
+                input=context.activity.text,
+                conversation=conversation.id,
+                extra_body={"agent_reference": {"type": "agent_reference", "name": config.ENV_FOUNDRY_AGENT_NAME}},
+            )
+
+            # Process the tool selection from the agent and execute the function ourselves
+            graph_service = GraphService(access_token)
+            input_list = []
+
+            for item in response.output:
+                item_type = getattr(item, "type", "")
+                if item_type == "function_call" and item.name == "getDocuments":
+                    args = json.loads(item.arguments)
+                    documents = await graph_service.get_copilot_data(args.get("query", ""), context.activity.locale)
+                    formatted_docs = [
+                        {
+                            "title": doc.get("resourceMetadata", {}).get("title") or "No Title",
+                            "url": doc.get("resourceMetadata", {}).get("url") or doc.get("webUrl") or "No URL",
+                            "extracts": doc.get("extracts", []),
+                        }
+                        for doc in documents
+                    ]
+                    input_list.append({
+                        "type": "function_call_output",
+                        "call_id": item.call_id,
+                        "output": json.dumps(formatted_docs),
+                    })
+
+            # Provide the tool output back to the agent, reusing the previous response to keep context
+            if input_list:
+                response = client.responses.create(
+                    model=config.ENV_FOUNDRY_AGENT_MODEL,
+                    input=input_list,
+                    previous_response_id=response.id,
+                    extra_body={"agent_reference": {"type": "agent_reference", "name": config.ENV_FOUNDRY_AGENT_NAME}},
+                )
+
+            await context.send_activity(response.output[-1].content[0].text)
+
+        except Exception as e:
+            await context.send_activity(f"On message error. Details: {str(e)}")
+    ```
+
+    In that code, we add an additional process to check if the agent response contains a tool call. If so, we execute the corresponding function (i.e., call the Graph API through the `GraphService` class) using the `access_token` passed as a parameter and provide the results back to the agent through a new response creation with the tool output, reusing the previous response ID to keep the context.
+   
+
+</TabItem>
+</Tabs>
+
+- From the AI Foundry portal, update the original prompt of the **ai-knowledge-agent** to include information about the new SharePoint tool. This will help the agent select it to answer user questions:
+
+    ```plaintext
+    # PURPOSE
+
+    You are an agent specialized in AI related questions. You help users improving their AI related topics knowledge based on several specialized articles.
+
+    # INSTRUCTIONS		
+            
+    - Provide detailed answers useful for practitioners. Avoid generic responses.
+    - **All** inquiries seeking information require a search both in AI Search and SharePoint. This **must** be performed every time users request information.
+    - If no relevant information is found in the 'ai-knowledge-index' index or SharePoint, you **must explicitly state that you cannot answer the question**.
+    - Your responses **must be strictly based on retrieved information**
+    - You **must not** speculate, infer, assume, or provide external knowledge beyond what is contained within 'ai-knowledge-index' or documents from SharePoint.
+    - **Dates, times, historical details, or contextual assumptions must never be modified**.
+    - **There are no exceptions** to performing searches and SharePoint documents retrieval when the user seeks information.
+    - Make your answers concise.
+    - You **must** respond with Markdown syntax. All links should be formatted with Markdown (ex: [My link](https://...)) based on the `url` of the item in results.
+    - You **must** include all your references as links along the answer text.
+    - You **must not** use bullet points to list links.
+    - You **must** call your tools only once.
+    - You **must** always cite your sources. This is not negotiable.
+    - You **must** be concise and provide short answers.
+
+    # WORKFLOW
+
+    - When asked about a AI topics :
+        - If the question relates to AI articles data, **ALWAYS** retrieve relevant data using 'ai-knowledge-index' search index and SharePoint.
+        - Answer the question based on retrieved data.
+    ```
+
+- In Visual Studio Code, launch the debugger using the _"Debug in Teams (Edge)"_ configuration to test the agent in the Teams or Copilot channel:
+
+  <div className="flex justify-center mb-10">
+    <img className="w-[50%]" src={DebugInTeams}/>
+  </div>
+
+  :::tip 
+  You can refer to Module 4 section ["Test the agent in Teams and Copilot"](../module4/#test-the-agent-in-teams-and-copilot) for more details about the testing procedure.
+  :::
+  
+  Ask the following question _"Why LLMs fail to reason globally?"_:
+
+  <div className="flex justify-center mb-10">
+    <img className="w-[80%]" src={AgentResponseWithoutCitations}/>
+  </div>
+
+  The agent should now pull the information from SharePoint using the new tool and provide a relevant answer based on that information.
+
+### Manage citations
+
+You may have noticed the links in the answer are not formatted as proper citations. To enhance the user experience, we will display citations correctly using builtin Teams/Copilot capabilities.
+
+<Tabs defaultValue="typescript" values={[{ label: 'TypeScript', value: 'typescript' },{ label: 'Python', value: 'python' }]}>
+<TabItem value="typescript">
+
+1. For the root folder of the GitHub repository, copy the file `workshops\rag-with-ai-foundry-m365\apps\typescript\assets\utils.ts` to the `src` folder of your project. This file contains utility functions to correctly handle Markdown links generated in the agent response.
+
+1. Update the `invokeAgent()` method in the `agent.ts` file to format citations correctly using the utility functions:
+
+    ```typescript title="Format citations in agent response"
+    import { Utils } from "./utils";
+    ...    
+
+    private async invokeAgent(context: TurnContext, accessToken: string) {
+
+        ...
+    
+        // Build previous response including tool output
+        response = await client.responses.create(
+            {
+                input: inputList,
+                previous_response_id: response.id,
+                agent_reference:{ 
+                    type: "agent_reference",
+                    name: config.agentName 
+                }
+            } as any
+        );
+
+        const lastOutput = response.output[response.output.length - 1] as { content?: Array<{ text?: string }> };
+
+        const agentAnswer: string = lastOutput.content?.[0]?.text ?? ""
+
+        // Extract links from the answer for citations
+        const links = Utils.extractMarkdownLinks(agentAnswer);
+
+        const streamingCitations = links.map((link, i) => {
+
+            return {
+            "@type": "Claim",
+            position: ++i,
+            appearance: {
+                "@type": "DigitalDocument",
+                name: link.title,
+                url: link.url
+            },
+            };
+        });
+
+        const activity = Activity.fromObject({
+            type: ActivityTypes.Message,
+            text: Utils.replaceMarkdownLinksWithOrder(agentAnswer),
+            entities: [
+            {
+            type: "https://schema.org/Message",
+            "@type": "Message",
+            "@context": "https://schema.org",
+            citation: streamingCitations,
+            }]
+        });
+
+        await context.sendActivity(activity);
+    }
+    ```
+
+    :::warning Links format
+    To get it work, the agent needs to explicitly output links in markdown format as part of its instructions (see prompt update above). Otherwise, the utility functions won't be able to extract them correctly.
+    :::
+
+    Now the links contained in the agent response will be formatted as proper citations in Teams/Copilot channel. Notice the citation experience is different when using Copilot channel compared to Teams channel directly:
+
+    <div className="flex justify-center mb-10 space-x-2">
+      <img className="w-[50%]" src={AgentResponseWithCitationsTeams}/>
+      <img className="w-[50%]" src={AgentResponseWithCitationsCopilot}/>
+    </div>
+
+</TabItem>
+<TabItem value="python">
+1. For the root folder of the GitHub repository, copy the file `workshops\rag-with-ai-foundry-m365\apps\python\assets\utils.py` to the `src` folder of your project. This file contains utility functions to correctly handle Markdown links generated in the agent response.
+
+1. Update the `invoke_agent()` function in the `agent.py` file to format citations correctly using the utility functions:
+
+    ```python title="Format citations in agent response"
+    from utils import extract_markdown_links, replace_markdown_links_with_order
+    ...
+
+    async def invoke_agent(context: TurnContext, access_token: str) -> None:
+        try:
+
+            ...
+
+            if input_list:
+                response = client.responses.create(
+                    model=config.ENV_FOUNDRY_AGENT_MODEL,
+                    input=input_list,
+                    previous_response_id=response.id,
+                    extra_body={"agent_reference": {"type": "agent_reference", "name": config.ENV_FOUNDRY_AGENT_NAME}},
+                )
+
+            agent_answer = response.output[-1].content[0].text
+
+            # Extract links from the answer for citations
+            links = extract_markdown_links(agent_answer)
+
+            streaming_citations = [
+                {
+                    "@type": "Claim",
+                    "position": i + 1,
+                    "appearance": {
+                        "@type": "DigitalDocument",
+                        "name": link["title"],
+                        "url": link["url"],
+                    },
+                }
+                for i, link in enumerate(links)
+            ]
+
+            activity = Activity(
+                type=ActivityTypes.message,
+                text=replace_markdown_links_with_order(agent_answer),
+                entities=[
+                    {
+                        "type": "https://schema.org/Message",
+                        "@type": "Message",
+                        "@context": "https://schema.org",
+                        "citation": streaming_citations,
+                    }
+                ],
+            )
+
+            await context.send_activity(activity)
+
+        except Exception as e:
+            await context.send_activity(f"On message error. Details: {str(e)}")
+    ```
+
+    :::warning Links format
+    To get it work, the agent needs to explicitly output links in markdown format as part of its instructions (see prompt update above). Otherwise, the utility functions won't be able to extract them correctly.
+    :::
+
+    Now the links contained in the agent response will be formatted as proper citations in Teams/Copilot channel. Notice the citation experience is different when using Copilot channel compared to Teams channel directly:
+
+    <div className="flex justify-center mb-10 space-x-2">
+      <img className="w-[50%]" src={AgentResponseWithCitationsTeams}/>
+      <img className="w-[50%]" src={AgentResponseWithCitationsCopilot}/>
+    </div>
+
+</TabItem>
+</Tabs>
+
+## Module wrap-up
+
+In this module, you successfully integrated Microsoft 365 data access into your agent by implementing authentication and using the Copilot Retrieval API. Here's what you accomplished:
+
+**Authentication Setup & Configuration**
+- Updated the Teams app manifest to include required domains for the OAuth authentication flow
+- Migrated the bot from the Bot Framework developer portal to Azure as a dedicated resource to support OAuth connection
+- Created an OAuth connection in Azure Bot Service with proper scopes to access Microsoft 365 data
+- Configured environment variables for bot authentication using client ID, tenant ID, and client secret
+
+**Single Sign-On (SSO) Implementation**
+- Integrated authentication capabilities into your agent using the Microsoft 365 Agents SDK
+- Implemented SSO handlers to manage sign-in success and failure scenarios
+- Configured the SDK to automatically handle the OAuth flow and token management
+- Added logout functionality to reset authentication state for testing purposes
+- Tested the authentication flow through sign-in cards in both Teams and Copilot channels
+
+**LLM Function Calling & Graph API Integration**
+- Created a GraphService class to encapsulate Microsoft Graph API calls using authenticated access tokens
+- Integrated the Copilot Retrieval API to query SharePoint documents on behalf of signed-in users
+- Dynamically registered a new tool function in the Microsoft Foundry agent definition at runtime
+- Designed tool definitions with clear descriptions and parameters to guide LLM tool selection
+- Implemented tool call processing logic to execute Graph API calls and format results for the agent
+
+**Tool Output Processing**
+- Captured tool selections from agent responses and executed corresponding function code
+- Retrieved documents from SharePoint using the Copilot Retrieval API with metadata like titles and URLs
+- Formatted tool outputs to provide structured data back to the agent for generating responses
+- Maintained conversation context by passing tool outputs through subsequent response creation with previous response IDs
+
+**Citations Management**
+- Updated the agent prompt to ensure all responses include markdown-formatted links
+- Implemented utility functions to extract markdown links from agent responses
+- Formatted citations using Teams/Copilot schema.org entities for proper display
+- Enhanced user experience by presenting references as clickable citations rather than raw links
+- Adapted citation display to support different visual experiences between Teams and Copilot channels
+
+Your agent now has the capability to authenticate users and retrieve data directly from Microsoft 365 using the Copilot Retrieval API. This enables personalized responses based on the user's own SharePoint content, combining both indexed data from Azure AI Search and live data from Microsoft 365, providing a comprehensive and context-aware knowledge assistant.
+
+<div className="text-center p-8 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white shadow-xl">
+    <div className="text-2xl font-bold mb-3">Ready to continue?</div>
+    <a href="../modules/module6" className="inline-block px-8 py-3 bg-white text-fuchsia-600 font-bold rounded-xl hover:bg-gray-100 transition-all duration-300 hover:scale-105 shadow-lg no-underline hover:no-underline">
+        <div>Go to Module 6 →</div>
+    </a>
+</div>
+

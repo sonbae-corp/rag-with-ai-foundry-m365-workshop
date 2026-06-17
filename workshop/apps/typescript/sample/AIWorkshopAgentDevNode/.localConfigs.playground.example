@@ -1,0 +1,8 @@
+# Copy this file to ".localConfigs.playground" and fill in your own values.
+# Do NOT commit the real ".localConfigs.playground" file — it is ignored by git.
+
+ENV_AZURE_DEPLOY_AI_FOUNDRY_PROJECT_ENDPOINT=
+ENV_AZURE_APP_TENANT_ID=
+ENV_AZURE_APP_CLIENT_ID=
+ENV_AZURE_APP_CLIENT_SECRET=
+ENV_FOUNDRY_AGENT_NAME=ai-knowledge-agent
