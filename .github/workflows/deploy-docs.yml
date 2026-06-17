@@ -40,7 +40,7 @@ jobs:
         uses: sonbae-corp/docusaurops-core/.github/workflows/deploy-site.yml@main
         with:
             app-name: 'Build It, Ground It, Ship It: RAG Agents with Azure and Microsoft 365'
-            app-path: 'aicd-montreal-2026-build-it-ship-it'
+            app-path: 'build-it-ship-it'
             action: 'deploy'
             enable-auth: false
             documentation-path: 'documentation'
